@@ -1,0 +1,7 @@
+{
+  "_note": "把 api_key / client_id / client_secret 换成你自己的",
+  "api_key": "YOUR_API_KEY",
+  "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "enabled": true
+}

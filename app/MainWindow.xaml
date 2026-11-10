@@ -1,0 +1,296 @@
+<Window x:Class="KZManager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KZ 多开管理器"
+        Height="720" Width="1140" MinHeight="520" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource B_Bg}"
+        FontFamily="{StaticResource F_Ui}"
+        Foreground="{DynamicResource B_Text}"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ================= 顶部 ================= -->
+        <Border Grid.Row="0" Background="{DynamicResource B_Header}" BorderBrush="{DynamicResource B_Line}"
+                BorderThickness="0,0,0,1" Padding="22,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 标志 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="38" Height="38" CornerRadius="10" Margin="0,0,14,0">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#4C8DFF" Offset="0"/>
+                                <GradientStop Color="#7C5CFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="KZ" Foreground="White" FontSize="15"
+                                   FontWeight="Bold" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="多开管理器" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="RootLabel" Text="" FontSize="11"
+                                   Foreground="{DynamicResource B_TextDim}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 搜索 -->
+                <Grid Grid.Column="1" MaxWidth="340" HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+                    <TextBox x:Name="SearchBox" Style="{StaticResource Input}"
+                             Padding="34,7,10,7"
+                             TextChanged="SearchBox_TextChanged"/>
+                    <TextBlock x:Name="SearchHint" Text="搜索 名称 / 标签 / 平台 / 时区 / seed"
+                               Foreground="{DynamicResource B_Dim2}" FontSize="12" Margin="34,0,0,0"
+                               VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    <Path Data="M 10 10 L 14 14 M 12 6 A 6 6 0 1 0 12 18 A 6 6 0 1 0 12 6"
+                          Stroke="{DynamicResource B_Dim2}" StrokeThickness="1.6"
+                          HorizontalAlignment="Left" VerticalAlignment="Center"
+                          Margin="11,0,0,0" Width="18" Height="18" Stretch="None"/>
+                </Grid>
+
+                <!-- 新建 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnTheme" Content="☀" Style="{StaticResource BtnGhost}"
+                            FontSize="15" MinWidth="38" Margin="0,0,6,0"
+                            ToolTip="切换深色 / 浅色" Click="BtnTheme_Click"/>
+                    <Button x:Name="BtnRefresh" Content="刷新" Style="{StaticResource BtnGhost}"
+                            Margin="0,0,6,0" Click="BtnRefresh_Click"/>
+                    <Button x:Name="BtnNew" Content="＋  新建实例" Style="{StaticResource BtnPrimary}"
+                            Click="BtnNew_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================= 列表 ================= -->
+        <Border Grid.Row="1" Margin="22,18,22,10" CornerRadius="12"
+                Background="{DynamicResource B_Card}" BorderBrush="{DynamicResource B_Line}"
+                BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <DataGrid x:Name="Grid" Grid.Row="1" Style="{StaticResource Grid}"
+                          ColumnHeaderStyle="{StaticResource GridHeader}"
+                          CellStyle="{StaticResource GridCell}"
+                          RowStyle="{StaticResource GridRow}"
+                          MouseDoubleClick="Grid_MouseDoubleClick"
+                          SelectionChanged="Grid_SelectionChanged"
+                          Sorting="Grid_Sorting">
+                    <DataGrid.Columns>
+                        <!-- 拖动把手：只有按在这里才能拖行，避免误拖 -->
+                        <DataGridTemplateColumn Width="34" CanUserSort="False"
+                                                CanUserResize="False">
+                            <DataGridTemplateColumn.Header>
+                                <TextBlock Text="" />
+                            </DataGridTemplateColumn.Header>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="grip" Background="Transparent"
+                                            Cursor="Hand" Padding="0"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch">
+                                        <UniformGrid Rows="3" Columns="2"
+                                                     Width="10" Height="16"
+                                                     HorizontalAlignment="Center"
+                                                     VerticalAlignment="Center">
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                            <Ellipse Width="2.5" Height="2.5" Margin="1"
+                                                     Fill="{DynamicResource B_Dim2}"/>
+                                        </UniformGrid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <Trigger SourceName="grip"
+                                                 Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="grip"
+                                                    Property="Background" Value="{DynamicResource B_CardHover}"/>
+                                        </Trigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="名称" Width="2.2*"
+                                                SortMemberPath="Name">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <Border Visibility="{Binding MasterBadge}"
+                                                Background="{DynamicResource B_Accent}"
+                                                CornerRadius="4" Padding="6,1"
+                                                Margin="0,0,7,0"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="主控" FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource B_PrimaryText}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="标签" Binding="{Binding Tags}" Width="1*"/>
+                        <DataGridTextColumn Header="平台" Binding="{Binding Platform}" Width="0.9*"/>
+                        <DataGridTextColumn Header="时区" Binding="{Binding Timezone}" Width="1.4*"/>
+                        <DataGridTextColumn Header="代理 / 节点" Binding="{Binding ProxyDisplay}" Width="2*"/>
+                        <DataGridTextColumn Header="seed" Binding="{Binding Seed}" Width="0.8*"/>
+                        <DataGridTextColumn Header="行" Binding="{Binding Rows}" Width="0.5*"/>
+                        <DataGridTemplateColumn Header="状态" Width="1*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse Width="7" Height="7" Margin="0,0,7,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="{DynamicResource B_Scroll}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Running}" Value="True">
+                                                            <Setter Property="Fill"
+                                                                    Value="{DynamicResource B_Green}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Text="{Binding Status}" FontSize="12">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground"
+                                                            Value="{DynamicResource B_TextDim}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Running}" Value="True">
+                                                            <Setter Property="Foreground"
+                                                                    Value="{DynamicResource B_Green}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- 拖动时的插入位置指示线 -->
+                <Border x:Name="DropLine" Grid.Row="1" Height="2"
+                        Background="{DynamicResource B_Accent}"
+                        VerticalAlignment="Top" HorizontalAlignment="Stretch"
+                        IsHitTestVisible="False" Visibility="Collapsed"
+                        Margin="6,0,6,0">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#4C8DFF" BlurRadius="8"
+                                          ShadowDepth="0" Opacity="0.9"/>
+                    </Border.Effect>
+                </Border>
+
+                <!-- 空状态 -->
+                <StackPanel x:Name="EmptyState" Grid.Row="1" VerticalAlignment="Center"
+                            HorizontalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="还没有实例" FontSize="15"
+                               Foreground="{DynamicResource B_TextDim}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="点右上角「新建实例」开始" FontSize="12"
+                               Foreground="{DynamicResource B_Dim2}" Margin="0,8,0,0"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================= 底部 ================= -->
+        <Border Grid.Row="2" Background="{DynamicResource B_Header}" BorderBrush="{DynamicResource B_Line}"
+                BorderThickness="0,1,0,0" Padding="22,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Button x:Name="BtnStart" Content="▶  启动" Style="{StaticResource BtnPrimary}"
+                            MinWidth="92" Margin="0,0,8,0" Click="BtnStart_Click"/>
+                    <Button x:Name="BtnStop" Content="■  停止" Style="{StaticResource BtnDanger}"
+                            MinWidth="92" Margin="0,0,8,0" Click="BtnStop_Click"/>
+                    <Button x:Name="BtnEdit" Content="编辑" Style="{StaticResource Btn}"
+                            MinWidth="76" Margin="0,0,8,0" Click="BtnEdit_Click"/>
+                    <Button x:Name="BtnClone" Content="克隆" Style="{StaticResource Btn}"
+                            MinWidth="76" Margin="0,0,8,0" Click="BtnClone_Click"/>
+                    <Button x:Name="BtnMore" Content="更多 ▾" Style="{StaticResource Btn}"
+                            MinWidth="86" Click="BtnMore_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="上移一位" Click="MenuMoveUp_Click"/>
+                                <MenuItem Header="下移一位" Click="MenuMoveDown_Click"/>
+                                <MenuItem Header="恢复默认顺序" Click="MenuResetOrder_Click"/>
+                                <Separator/>
+                                <MenuItem Header="创建快捷方式…" Click="MenuShortcut_Click"/>
+                                <MenuItem Header="打开数据目录" Click="MenuOpenDir_Click"/>
+                                <Separator/>
+                                <MenuItem Header="指纹自检" Click="MenuSelfTest_Click"/>
+                                <MenuItem Header="健康巡检" Click="MenuHealth_Click"/>
+                                <Separator/>
+                                <MenuItem Header="一键备份…" Click="MenuBackupOne_Click"/>
+                                <MenuItem Header="一键还原…" Click="MenuRestoreOne_Click"/>
+                                <Separator/>
+                                <MenuItem Header="备份 / 校验 / 还原（单实例旧界面）" Click="MenuBackup_Click"/>
+                                <MenuItem Header="创建快照" Click="MenuSnapshot_Click"/>
+                                <MenuItem Header="从快照还原" Click="MenuRestore_Click"/>
+                                <Separator/>
+                                <MenuItem Header="同步数据（书签/密码/历史/扩展）" Click="MenuSync_Click"/>
+                                <MenuItem Header="启动前出口 IP 预检" x:Name="MenuProxyPrecheck"
+                                          IsCheckable="True" Click="MenuProxyPrecheck_Click"/>
+                                <MenuItem Header="智能默认浏览器：跟随前台实例" x:Name="MenuSmartDefault"
+                                          IsCheckable="True" IsChecked="True" Click="MenuSmartDefault_Click"/>
+                                <MenuItem Header="查看当前默认落到哪个实例" Click="MenuSmartDefaultStatus_Click"/>
+                                <MenuItem Header="重刷所有快捷方式图标" Click="MenuRefreshIcons_Click"/>
+                                <MenuItem Header="指纹一致性检查…" Click="MenuConsistency_Click"/>
+                                <MenuItem Header="节点库管理" Click="MenuNodes_Click"/>
+                                <Separator/>
+                                <MenuItem Header="任务栏：每个窗口单独显示…" Click="MenuTaskbar_Click"/>
+                                <Separator/>
+                                <MenuItem Header="删除实例…" Click="MenuDelete_Click"
+                                          Foreground="{DynamicResource B_Red}"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+
+                <TextBlock x:Name="StatusText" Grid.Column="1" Text="抓住每行左侧的竖点上下拖可调整顺序 · 点列头临时排序"
+                           Foreground="{DynamicResource B_TextDim}" FontSize="12"
+                           VerticalAlignment="Center" Margin="18,0"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <TextBlock x:Name="CountText" Grid.Column="2" Text=""
+                           Foreground="{DynamicResource B_TextDim}" FontSize="12"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

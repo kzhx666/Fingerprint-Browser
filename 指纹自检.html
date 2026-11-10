@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>指纹自检</title>
+<style>
+  body { font: 14px/1.6 "Microsoft YaHei", system-ui, sans-serif; margin: 24px; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #e3e3e3; }
+  table { border-collapse: collapse; width: 100%; max-width: 1100px; }
+  th, td { border: 1px solid #e0e0e0; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f7f7f7; font-weight: 600; }
+  td.k { width: 190px; color: #555; }
+  td.v { font-family: Consolas, monospace; word-break: break-all; }
+  .ok   { color: #0a7d32; font-weight: 700; }
+  .bad  { color: #c62828; font-weight: 700; }
+  .skip { color: #999; }
+  #verdict { display: inline-block; padding: 8px 18px; border-radius: 6px; font-size: 16px; font-weight: 700; margin: 12px 0 4px; }
+  #verdict.pass { background: #e6f4ea; color: #0a7d32; border: 1px solid #b7dfc4; }
+  #verdict.fail { background: #fdecea; color: #c62828; border: 1px solid #f5c2bd; }
+  #verdict.none { background: #f2f2f2; color: #666; border: 1px solid #ddd; }
+  #sub { color: #666; font-size: 13px; }
+  button { margin: 14px 8px 0 0; padding: 6px 14px; cursor: pointer; }
+  textarea { width: 100%; max-width: 1100px; height: 200px; margin-top: 12px;
+             font-family: Consolas, monospace; font-size: 12px; }
+  .hint { color: #888; font-size: 12px; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+
+<h1>指纹自检</h1>
+<div id="verdict" class="none">检测中…</div>
+<div id="sub"></div>
+
+<h2>逐项核对</h2>
+<table id="check">
+  <thead><tr><th style="width:190px">检查项</th><th style="width:280px">期望值</th><th>实际值</th><th style="width:70px">结果</th></tr></thead>
+  <tbody></tbody>
+</table>
+<p class="hint">期望值来自实例的 profile.json（管理器打开本页时通过 URL 传入）。直接双击打开本页则只显示实际值，不做判定。<br>
+语言列表和 <code>Accept-Language</code> 请求头是同一份数据（<code>--accept-lang</code>），所以看 <code>navigator.languages</code> 就能判断网站收到的语言。</p>
+
+<h2>导航器 / 客户端提示</h2>
+<table id="t1"></table>
+
+<h2>环境</h2>
+<table id="t2"></table>
+
+<h2>图形与音频</h2>
+<table id="t3"></table>
+
+<h2>地理位置 / WebRTC</h2>
+<table id="t4"></table>
+
+<h2>字体探测（document.fonts.check）</h2>
+<table id="t5"></table>
+
+<h2>字体宽度探测（measureText）</h2>
+<p class="hint">这里列出的是「和基线宽度不同」的字体，也就是能被网站识别出来的字体。伪装生效时，其他平台的系统字体不应该出现在这里。</p>
+<table id="t6"></table>
+
+<button id="copy">复制全部结果</button>
+<button id="refresh">重新检测</button>
+<textarea id="json" readonly></textarea>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------- 期望值
+var Q = new URLSearchParams(location.search);
+function q(name) { return (Q.get(name) || '').trim(); }
+
+var EXPECT = {
+  seed:     q('seed'),
+  platform: q('platform'),
+  timezone: q('timezone'),
+  lang:     q('lang'),
+  screen:   q('screen'),
+  dpr:      q('dpr'),
+  cores:    q('cores'),
+  memory:   q('memory'),
+  geo:      q('geo'),
+  webrtc:   q('webrtc'),
+  fonts:    q('fonts')
+};
+
+var PLATFORM_MAP = {
+  macos:   'MacIntel',
+  windows: 'Win32',
+  linux:   'Linux x86_64'
+};
+
+function firstLang(s) {
+  if (!s) return '';
+  return s.split(',')[0].split(';')[0].trim();
+}
+
+function rows(tbl, list) {
+  var el = document.getElementById(tbl);
+  var html = '';
+  for (var i = 0; i < list.length; i++) {
+    html += '<tr><td class="k">' + list[i][0] + '</td><td class="v">' +
+            String(list[i][1]) + '</td></tr>';
+  }
+  el.innerHTML = html;
+}
+
+// ---------------------------------------------------------------- 采集
+var data = {};
+
+function canvasHash() {
+  try {
+    var c = document.createElement('canvas');
+    c.width = 220; c.height = 60;
+    var x = c.getContext('2d');
+    x.textBaseline = 'top';
+    x.font = '16px Arial';
+    x.fillStyle = '#f60'; x.fillRect(0, 0, 100, 30);
+    x.fillStyle = '#069'; x.fillText('KZ 指纹自检 \u2601', 2, 4);
+    x.fillStyle = 'rgba(102,204,0,0.7)'; x.fillText('KZ 指纹自检 \u2601', 4, 18);
+    var d = c.toDataURL();
+    var h = 5381;
+    for (var i = 0; i < d.length; i++) { h = ((h * 33) ^ d.charCodeAt(i)) >>> 0; }
+    return h.toString(16);
+  } catch (e) { return 'ERR:' + e.message; }
+}
+
+function webglInfo() {
+  try {
+    var c = document.createElement('canvas');
+    var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    if (!gl) return ['(无 WebGL)', '(无 WebGL)'];
+    var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    if (!dbg) return ['(无 debug 扩展)', '(无 debug 扩展)'];
+    return [gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL),
+            gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)];
+  } catch (e) { return ['ERR', 'ERR']; }
+}
+
+function collect() {
+  var d = {};
+  d.ua = navigator.userAgent;
+  d.platform = navigator.platform;
+  d.language = navigator.language;
+  d.languages = (navigator.languages || []).join(', ');
+  d.webdriver = navigator.webdriver;
+  d.cores = navigator.hardwareConcurrency;
+  d.memory = navigator.deviceMemory;
+  d.tz = '';
+  try { d.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+  d.tzOffset = new Date().getTimezoneOffset();
+  d.screen = screen.width + 'x' + screen.height;
+  d.avail = screen.availWidth + 'x' + screen.availHeight;
+  d.dpr = window.devicePixelRatio;
+  d.colorDepth = screen.colorDepth;
+  d.canvas = canvasHash();
+  var w = webglInfo();
+  d.webglVendor = w[0];
+  d.webglRenderer = w[1];
+  d.brands = '';
+  try {
+    if (navigator.userAgentData && navigator.userAgentData.brands) {
+      d.brands = navigator.userAgentData.brands
+        .map(function (b) { return b.brand + '/' + b.version; }).join(', ');
+    }
+  } catch (e) {}
+  return d;
+}
+
+// 字体：check() 与 measureText 双向量
+var FONTS = [
+  'Helvetica', 'Helvetica Neue', 'Arial', 'Arial Narrow', 'Avenir',
+  'Menlo', 'Monaco', 'SF Pro', 'Hiragino Sans', 'PingFang SC', 'Songti SC',
+  'Segoe UI', 'Microsoft YaHei', 'Calibri', 'Consolas', 'SimSun', 'SimHei',
+  'Bahnschrift', 'Meiryo', 'MingLiU',
+  'DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Ubuntu',
+  'ThisFontDoesNotExist_9f3a'
+];
+
+function fontCheck() {
+  var out = {};
+  for (var i = 0; i < FONTS.length; i++) {
+    var f = FONTS[i];
+    try { out[f] = document.fonts.check('12px "' + f + '"'); }
+    catch (e) { out[f] = 'ERR'; }
+  }
+  return out;
+}
+
+function measureProbe() {
+  var base = ['monospace', 'sans-serif', 'serif'];
+  var ref = {};
+  var c = document.createElement('canvas');
+  var x = c.getContext('2d');
+  for (var i = 0; i < base.length; i++) {
+    x.font = '72px ' + base[i];
+    ref[base[i]] = x.measureText('mmmmmmmmmmlli').width;
+  }
+  var out = {};
+  for (var j = 0; j < FONTS.length; j++) {
+    var f = FONTS[j];
+    var hit = false;
+    for (var k = 0; k < base.length; k++) {
+      x.font = '72px "' + f + '", ' + base[k];
+      var w = x.measureText('mmmmmmmmmmlli').width;
+      if (Math.abs(w - ref[base[k]]) > 0.5) { hit = true; break; }
+    }
+    out[f] = hit;
+  }
+  return out;
+}
+
+function geoCheck() {
+  return new Promise(function (resolve) {
+    if (!navigator.geolocation) { resolve({ ok: false, msg: '不支持' }); return; }
+    var done = false;
+    navigator.geolocation.getCurrentPosition(
+      function (p) {
+        done = true;
+        resolve({ ok: true, lat: p.coords.latitude, lon: p.coords.longitude,
+                  acc: p.coords.accuracy });
+      },
+      function (e) {
+        done = true;
+        resolve({ ok: false, msg: '拒绝/失败 code=' + e.code });
+      },
+      { timeout: 6000 }
+    );
+    setTimeout(function () { if (!done) resolve({ ok: false, msg: '超时' }); }, 7000);
+  });
+}
+
+function webrtcCheck() {
+  return new Promise(function (resolve) {
+    var cands = [];
+    try {
+      var pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+      pc.onicecandidate = function (e) {
+        if (e.candidate) cands.push(e.candidate.candidate);
+        else resolve(cands);
+      };
+      pc.createDataChannel('x');
+      pc.createOffer().then(function (o) { pc.setLocalDescription(o); });
+      setTimeout(function () { resolve(cands); }, 5000);
+    } catch (e) { resolve([]); }
+  });
+}
+
+// ---------------------------------------------------------------- 判定
+function isPrivate(ip) {
+  if (!ip) return false;
+  return /^10\./.test(ip) || /^192\.168\./.test(ip) ||
+         /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || /^127\./.test(ip) ||
+         /^169\.254\./.test(ip);
+}
+
+function ipFromCandidate(c) {
+  var m = c.match(/(\d{1,3}(?:\.\d{1,3}){3})/);
+  return m ? m[1] : '';
+}
+
+function buildChecks(d, fonts, mprobe, geo, cands) {
+  var out = [];
+  function add(name, expect, actual, verdict) {
+    out.push({ name: name, expect: expect, actual: actual, verdict: verdict });
+  }
+  function eq(name, expect, actual) {
+    if (!expect) { add(name, '(未指定)', actual, 'skip'); return; }
+    add(name, expect, actual,
+        String(expect).toLowerCase() === String(actual).toLowerCase() ? 'ok' : 'bad');
+  }
+
+  // 平台
+  if (EXPECT.platform) {
+    var want = PLATFORM_MAP[EXPECT.platform];
+    if (want) eq('navigator.platform', want, d.platform);
+    else add('navigator.platform', 'host（不伪装）', d.platform, 'skip');
+  } else {
+    add('navigator.platform', '(未指定)', d.platform, 'skip');
+  }
+
+  // UA 里的系统标识
+  if (EXPECT.platform) {
+    var uaWant = { macos: 'Mac OS X', windows: 'Windows NT', linux: 'Linux' }[EXPECT.platform];
+    if (uaWant) {
+      add('UA 系统标识', uaWant,
+          d.ua.indexOf(uaWant) >= 0 ? uaWant : '(UA 里没有)',
+          d.ua.indexOf(uaWant) >= 0 ? 'ok' : 'bad');
+    }
+  }
+
+  // 时区
+  eq('时区', EXPECT.timezone, d.tz);
+  eq('语言 navigator.language', firstLang(EXPECT.lang), d.language);
+
+  // 语言列表：Accept-Language 被网站读到的就是这一串
+  if (EXPECT.lang) {
+    var wantLangs = EXPECT.lang.split(',')
+      .map(function (x) { return x.split(';')[0].trim(); })
+      .filter(Boolean);
+    var gotLangs = (navigator.languages || []).join(',');
+    var langOk = gotLangs.toLowerCase() === wantLangs.join(',').toLowerCase();
+    add('语言列表 languages', wantLangs.join(','), gotLangs, langOk ? 'ok' : 'bad');
+    // 残留 ;q= 说明只改了 JS、没改请求头
+    if (/;q=/.test(gotLangs)) {
+      add('Accept-Language 请求头', '不含 ;q=', '含 ;q=（未传 --accept-lang）', 'bad');
+    }
+  }
+  eq('分辨率', EXPECT.screen, d.screen);
+  eq('像素比', EXPECT.dpr, String(d.dpr));
+  eq('CPU 核数', EXPECT.cores, String(d.cores));
+  eq('内存 GB', EXPECT.memory, String(d.memory));
+  eq('webdriver', 'false', String(d.webdriver));
+
+  // 地理位置
+  if (EXPECT.geo) {
+    var parts = EXPECT.geo.split(',');
+    var lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+    if (!geo.ok) {
+      add('地理位置', lat + ', ' + lon, geo.msg, 'bad');
+    } else {
+      var dlat = Math.abs(geo.lat - lat), dlon = Math.abs(geo.lon - lon);
+      add('地理位置', lat + ', ' + lon,
+          geo.lat.toFixed(4) + ', ' + geo.lon.toFixed(4),
+          (dlat < 0.01 && dlon < 0.01) ? 'ok' : 'bad');
+    }
+  } else {
+    add('地理位置', '(未配置 --fp-geo)', geo.ok ?
+        geo.lat.toFixed(4) + ', ' + geo.lon.toFixed(4) : geo.msg, 'skip');
+  }
+
+  // WebRTC
+  var ips = cands.map(ipFromCandidate).filter(Boolean);
+  var priv = ips.filter(isPrivate);
+  var policy = EXPECT.webrtc || '';
+  var shown = cands.length === 0 ? '无候选' : (ips.join(', ') || '仅 mDNS');
+  if (policy === 'strict') {
+    add('WebRTC 候选', '无（disable_non_proxied_udp）', shown,
+        cands.length === 0 ? 'ok' : 'bad');
+  } else if (policy === 'public') {
+    add('WebRTC 内网 IP', '不暴露内网地址', priv.length ? priv.join(', ') : '未暴露',
+        priv.length === 0 ? 'ok' : 'bad');
+  } else if (policy === 'off') {
+    add('WebRTC', '不干预', shown, 'skip');
+  } else {
+    add('WebRTC', '(未指定)', shown, 'skip');
+  }
+
+  // 字体
+  if (EXPECT.fonts === 'off') {
+    add('字体伪装', '关闭', '关闭', 'skip');
+  } else {
+    var macOnly = ['Helvetica', 'Helvetica Neue', 'Avenir', 'Menlo', 'Monaco',
+                   'SF Pro', 'Hiragino Sans', 'PingFang SC', 'Songti SC'];
+    var winOnly = ['Segoe UI', 'Microsoft YaHei', 'Calibri', 'Consolas', 'SimSun',
+                   'SimHei', 'Bahnschrift', 'Meiryo', 'MingLiU'];
+    var linuxOnly = ['DejaVu Sans', 'Liberation Sans', 'Noto Sans', 'Ubuntu'];
+    var shouldHide = [];
+    if (EXPECT.platform === 'macos') shouldHide = winOnly.concat(linuxOnly);
+    else if (EXPECT.platform === 'windows') shouldHide = macOnly.concat(linuxOnly);
+    else if (EXPECT.platform === 'linux') shouldHide = macOnly.concat(winOnly);
+
+    var leaked = [];
+    for (var i = 0; i < shouldHide.length; i++) {
+      var f = shouldHide[i];
+      if (mprobe[f] === true) leaked.push(f);
+    }
+    add('字体宽度探测泄漏', '不该测出其他平台字体',
+        leaked.length ? leaked.join(', ') : '无',
+        leaked.length === 0 ? 'ok' : 'bad');
+
+    // 假字体必须测不出来
+    var fake = 'ThisFontDoesNotExist_9f3a';
+    add('假字体 check()', 'false', String(fonts[fake]),
+        fonts[fake] === false ? 'ok' : 'bad');
+    add('假字体 measureText', 'false', String(mprobe[fake]),
+        mprobe[fake] === false ? 'ok' : 'bad');
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------- 渲染
+function renderChecks(list) {
+  var tb = document.querySelector('#check tbody');
+  var html = '', pass = 0, fail = 0, skip = 0;
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var cls = c.verdict === 'ok' ? 'ok' : (c.verdict === 'bad' ? 'bad' : 'skip');
+    var mark = c.verdict === 'ok' ? '✓ 通过' :
+               (c.verdict === 'bad' ? '✗ 不符' : '— 跳过');
+    if (c.verdict === 'ok') pass++;
+    else if (c.verdict === 'bad') fail++;
+    else skip++;
+    html += '<tr><td>' + c.name + '</td>' +
+            '<td class="v">' + String(c.expect) + '</td>' +
+            '<td class="v">' + String(c.actual) + '</td>' +
+            '<td class="' + cls + '">' + mark + '</td></tr>';
+  }
+  tb.innerHTML = html;
+
+  var v = document.getElementById('verdict');
+  var sub = document.getElementById('sub');
+  var hasExpect = Object.keys(EXPECT).some(function (k) { return EXPECT[k]; });
+  if (!hasExpect) {
+    v.className = 'none';
+    v.textContent = '仅显示实际值（未传入期望值）';
+    sub.textContent = '想自动判定，请从管理器点「指纹自检」打开本页。';
+  } else if (fail === 0) {
+    v.className = 'pass';
+    v.textContent = '伪装生效：' + pass + ' 项全部通过';
+    sub.textContent = skip ? ('另有 ' + skip + ' 项未指定，跳过判定。') : '全部检查项都符合实例配置。';
+  } else {
+    v.className = 'fail';
+    v.textContent = '有 ' + fail + ' 项不符';
+    sub.textContent = '通过 ' + pass + ' 项，不符 ' + fail + ' 项，跳过 ' + skip + ' 项。看下面红色行。';
+  }
+  return { pass: pass, fail: fail, skip: skip };
+}
+
+// ---------------------------------------------------------------- 主流程
+function run() {
+  document.getElementById('verdict').className = 'none';
+  document.getElementById('verdict').textContent = '检测中…';
+  var d = collect();
+  var fonts = fontCheck();
+  var mprobe = measureProbe();
+
+  rows('t1', [
+    ['User-Agent', d.ua],
+    ['platform', d.platform],
+    ['language', d.language],
+    ['languages', d.languages],
+    ['UA-CH brands', d.brands || '(无)'],
+    ['webdriver', d.webdriver]
+  ]);
+  rows('t2', [
+    ['时区', d.tz],
+    ['时区偏移(分)', d.tzOffset],
+    ['屏幕', d.screen],
+    ['可用区域', d.avail],
+    ['像素比', d.dpr],
+    ['色深', d.colorDepth],
+    ['CPU 核数', d.cores],
+    ['内存 GB', d.memory === undefined ? '(未实现)' : d.memory]
+  ]);
+  rows('t3', [
+    ['Canvas 哈希', d.canvas],
+    ['WebGL 厂商', d.webglVendor],
+    ['WebGL 型号', d.webglRenderer]
+  ]);
+
+  Promise.all([geoCheck(), webrtcCheck()]).then(function (res) {
+    var geo = res[0], cands = res[1];
+    var geoRow = geo.ok ?
+      (geo.lat.toFixed(4) + ', ' + geo.lon.toFixed(4) + '  ±' + geo.acc + 'm') :
+      geo.msg;
+    var candRow = cands.length === 0 ? '无候选' :
+      cands.map(function (c) { return c.split(' ')[4] + ' (' + c.split(' ')[7] + ')'; }).join(' | ');
+    rows('t4', [
+      ['地理位置', geoRow],
+      ['WebRTC 候选', candRow]
+    ]);
+
+    var f1 = [], f2 = [];
+    for (var i = 0; i < FONTS.length; i++) {
+      var f = FONTS[i];
+      f1.push([f, fonts[f]]);
+      f2.push([f, mprobe[f] ? '测得出' : '测不出']);
+    }
+    rows('t5', f1);
+    rows('t6', f2);
+
+    var checks = buildChecks(d, fonts, mprobe, geo, cands);
+    var stat = renderChecks(checks);
+
+    data = {
+      expected: EXPECT,
+      checks: checks,
+      stats: stat,
+      navigator: d,
+      geolocation: geo,
+      webrtcCandidates: cands,
+      fonts: fonts,
+      measureTextProbe: mprobe
+    };
+    window.__fpData = data;
+    document.getElementById('json').value = JSON.stringify(data, null, 2);
+  });
+}
+
+document.getElementById('refresh').addEventListener('click', run);
+document.getElementById('copy').addEventListener('click', function () {
+  var t = document.getElementById('json');
+  t.select();
+  try { document.execCommand('copy'); } catch (e) {}
+});
+
+run();
+</script>
+</body>
+</html>

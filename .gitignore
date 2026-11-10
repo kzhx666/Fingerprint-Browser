@@ -1,0 +1,73 @@
+# ============================================================
+#  KZ 多开管理器 —— 绝对不要提交的东西
+#  这个项目会把浏览器数据、节点链接、账号令牌放在仓库目录里，
+#  下面的规则是防止手滑把隐私推上 GitHub 的最后一道保险。
+# ============================================================
+
+# ---------- 浏览器实例数据（书签 / 密码 / Cookie / 历史）----------
+# 每个实例是一个目录，里面有 profile.json 和 Data/
+Data/
+Data/**/*
+*/Data/
+*/Data/**/*
+**/Data/**
+profile.json
+**/profile.json
+
+# ---------- 节点 / 订阅 ----------
+# nodes.json 里是带 UUID 的真实节点链接，泄漏等于送号
+nodes.json
+_node-stats.json
+*.sub
+subscription*
+
+# ---------- 账号 / 令牌 ----------
+.sync-token.json
+google-oauth.json
+autosync.json
+account*.json
+token*.json
+*.token
+*.secret
+
+# ---------- 备份 / 快照 ----------
+_backup/
+_snapshots/
+*.bak
+
+# ---------- 本地配置（含本机绝对路径）----------
+manager.json
+manager.local.json
+
+# ---------- 日志 / 临时 ----------
+*.log
+_drag.log
+_error.log
+temp/
+tmp/
+_ddtest/
+_pooltest/
+_lbltest/
+_selftest/
+_nodetest/
+__pycache__/
+*.pyc
+*.pyo
+
+# ---------- 编译产物 ----------
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+publish/
+
+# ---------- 编辑器 / 系统 ----------
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
+.DS_Store

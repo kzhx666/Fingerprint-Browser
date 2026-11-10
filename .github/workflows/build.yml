@@ -1,0 +1,91 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# 创建 Release 需要写权限；不声明的话 GITHUB_TOKEN 是只读的
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  build:
+    name: 编译 KZManager.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 还原依赖
+        run: dotnet restore app/KZManager.csproj
+
+      - name: 编译（单文件自包含）
+        run: >
+          dotnet publish app/KZManager.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
+          -o out
+
+      - name: 校验产物
+        shell: pwsh
+        run: |
+          $exe = 'out/KZManager.exe'
+          if (-not (Test-Path $exe)) { throw "编译失败：找不到 $exe" }
+          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "KZManager.exe  $mb MB"
+          if ($mb -lt 20) { throw "产物异常：只有 $mb MB" }
+
+      - name: 打包 Python 工具（和 EXE 一起分发）
+        shell: pwsh
+        run: |
+          $files = @(
+            'node-proxy.py', 'snapshot.py', 'backup.py', 'sync-data.py',
+            'set-pref.py', 'account-sync.py', 'autosync.py',
+            '指纹自检.html', 'manager.example.json', '项目说明.md', 'README.md'
+          )
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item 'out/KZManager.exe' dist/
+          foreach ($f in $files) {
+            if (Test-Path $f) { Copy-Item $f dist/ } else { Write-Warning "缺少 $f" }
+          }
+          Compress-Archive -Path 'dist/*' -DestinationPath 'KZManager-win-x64.zip' -Force
+          $zipMb = [math]::Round((Get-Item 'KZManager-win-x64.zip').Length / 1MB, 1)
+          Write-Host "KZManager-win-x64.zip  $zipMb MB"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: KZManager-win-x64
+          path: KZManager-win-x64.zip
+          retention-days: 30
+
+      - name: 打 tag 时自动发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: KZManager-win-x64.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

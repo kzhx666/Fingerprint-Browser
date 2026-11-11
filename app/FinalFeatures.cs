@@ -133,4 +133,67 @@ public static class FinalFeatures
         }
         catch (Exception e) { return (false, report, e.Message); }
     }
+
+    // ---- 22 本地多配置集（不假称云同步）：列出/切换/打包 ----
+    public static List<string> ConfigSets()
+    {
+        var dir = Path.Combine(Paths.Root, "_exports");
+        if (!Directory.Exists(dir)) return new List<string>();
+        return Directory.GetFiles(dir, "*.json")
+            .OrderByDescending(File.GetLastWriteTime)
+            .Select(Path.GetFileName).Where(x => x is not null).ToList()!;
+    }
+
+    /// <summary>把一个配置集包还原为当前实例集（团队共享配置包导入）。</summary>
+    public static (int count, List<string> errors) LoadConfigSet(string name)
+    {
+        var f = Path.Combine(Paths.Root, "_exports", Path.GetFileName(name));
+        if (!File.Exists(f)) return (0, new List<string> { "配置集不存在" });
+        return ProductFeatures.ImportBundle(f);
+    }
+
+    // ---- 23 屏幕录制基础：headless 截图（不引第三方 WS 库）----
+    /// <summary>用 Chrome headless 对指定 URL 截一张图，返回 PNG 路径。</summary>
+    public static (bool ok, string path, string error) Screenshot(
+        string chromeExe, string url, string? tag = null)
+    {
+        var outDir = Path.Combine(Paths.Root, "_captures");
+        Directory.CreateDirectory(outDir);
+        var file = Path.Combine(outDir,
+            "cap-" + (tag ?? DateTime.Now.ToString("yyyyMMdd-HHmmss")) + ".png");
+        try
+        {
+            var dataDir = Path.Combine(outDir, "data-" + Guid.NewGuid().ToString("N").Substring(0, 6));
+            var psi = new System.Diagnostics.ProcessStartInfo(chromeExe)
+            { UseShellExecute = false, CreateNoWindow = true,
+              RedirectStandardError = true, RedirectStandardOutput = true };
+            psi.ArgumentList.Add("--headless=new");
+            psi.ArgumentList.Add("--disable-gpu");
+            psi.ArgumentList.Add("--no-sandbox");
+            psi.ArgumentList.Add("--hide-scrollbars");
+            psi.ArgumentList.Add("--user-data-dir=" + dataDir);
+            psi.ArgumentList.Add("--window-size=1280,720");
+            psi.ArgumentList.Add("--screenshot=" + file);
+            psi.ArgumentList.Add(url);
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null) return (false, file, "无法启动 chrome");
+            // 先等进程真正退出（headless chrome 会异步写 PNG，
+            // 过早 ReadToEnd 返回时文件可能尚未落盘）
+            p.WaitForExit(30000);
+            string stderr = "";
+            try { stderr = p.StandardError.ReadToEnd(); } catch { }
+            bool ok = false;
+            for (int i = 0; i < 20 && !ok; i++)
+            {
+                ok = File.Exists(file) && new FileInfo(file).Length > 1000;
+                if (!ok) System.Threading.Thread.Sleep(150);
+            }
+            if (!ok) ProductFeatures.Log("capture.stderr",
+                stderr.Substring(0, Math.Min(300, stderr.Length)));
+            ProductFeatures.Log("capture", url + " -> " + (ok ? "ok" : "fail"));
+            return (ok, file, ok ? "" : "截图未生成");
+        }
+        catch (Exception e) { return (false, file, e.Message); }
+    }
+
 }

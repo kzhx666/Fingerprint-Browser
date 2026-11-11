@@ -148,6 +148,20 @@ public static class LocalApi
                     var br = FinalFeatures.Benchmark(cfgB.chromeExe, q["seed"] ?? "914410");
                     payload = new { ok = br.ok, report = br.report, error = br.error };
                     break;
+                case "/configsets":   // 22 本地配置集
+                    payload = new { ok = true, sets = FinalFeatures.ConfigSets() };
+                    break;
+                case "/loadset":      // 22 载入配置集
+                    var sn = q["name"] ?? "";
+                    var (lc, le) = FinalFeatures.LoadConfigSet(sn);
+                    payload = new { ok = le.Count == 0, count = lc, errors = le };
+                    break;
+                case "/screenshot":  // 23 屏幕截图
+                    var cfgS = Store.LoadConfig();
+                    var surl = q["url"] ?? "https://example.com";
+                    var sc = FinalFeatures.Screenshot(cfgS.chromeExe, surl, q["tag"]);
+                    payload = new { ok = sc.ok, path = sc.path, error = sc.error };
+                    break;
                 default:
                     code = 404;
                     payload = new { ok = false, error = "unknown endpoint",

@@ -3802,6 +3802,319 @@ ALL_V7 = [
 
 
 
+
+# ===========================================================================
+# v8: WebAudio fingerprint spoofing at the V8 binding boundary
+# ===========================================================================
+
+def _fp8_insert(text):
+    inc = ('#include "third_party/blink/renderer/modules/webaudio/'
+           'fingerprint_audio.h"')
+    if inc in text:
+        return text
+    return insert_after_first_include(text, inc)
+
+
+def patch_fp_audio_h(src_root: Path, rep: Report):
+    name = "v8 fp_audio shared header"
+    p = (src_root / "third_party/blink/renderer/modules/webaudio/"
+         "fingerprint_audio.h")
+    try:
+        if p.exists() and "PATCH:fp-audio-h" in read_file(p):
+            rep.record(name, "ALREADY")
+        else:
+            rep.record(name, "FAILED", "header missing (generated separately)")
+    except Exception as e:
+        rep.record(name, "FAILED", str(e))
+
+
+def _simple(name, rel, anchor, repl, rep, src_root, marker):
+    p = src_root / rel
+    if not p.exists():
+        rep.record(name, "FAILED", rel + " missing"); return
+    try:
+        x = read_file(p)
+        if marker in x:
+            rep.record(name, "ALREADY"); return
+        if anchor not in x:
+            rep.record(name, "FAILED", "anchor missing"); return
+        x = _fp8_insert(x)
+        x = x.replace(anchor, repl, 1)
+        write_file(p, x)
+        rep.record(name, "APPLIED")
+    except Exception as e:
+        rep.record(name, "FAILED", str(e))
+
+
+def patch_fp_audio_offline(src_root: Path, rep: Report):
+    a = "  CHECK(rendered_buffer);\n  // Keep the target queued across `Resolve()` so synchronous thenable getters"
+    b = ("  CHECK(rendered_buffer);\n"
+         "  // PATCH:fp-audio-offline - V8 binding boundary, AFTER the render\n"
+         "  // thread wrote all PCM into the channel spans. A constructor-level\n"
+         "  // patch here would be overwritten by DoOfflineRendering().\n"
+         "  if (fp_audio::On(\"fp-audio\")) {\n"
+         "    for (unsigned i = 0; i < rendered_buffer->numberOfChannels(); ++i)\n"
+         "      fp_audio::Perturb(rendered_buffer->getChannelData(i)->AsSpan(), 0xA0D10);\n"
+         "  }\n"
+         "  // Keep the target queued across `Resolve()` so synchronous thenable getters")
+    _simple("v8 OfflineAudioContext sampling noise",
+            "third_party/blink/renderer/modules/webaudio/offline_audio_context.cc",
+            a, b, rep, src_root, "PATCH:fp-audio-offline")
+
+
+def patch_fp_audio_biquad(src_root: Path, rep: Report):
+    a = ("    GetBiquadFilterHandler().GetFrequencyResponse(frequency_hz->AsSpan(),\n"
+         "                                                  mag_response->AsSpan(),\n"
+         "                                                  phase_response->AsSpan());\n"
+         "  }")
+    b = ("    GetBiquadFilterHandler().GetFrequencyResponse(frequency_hz->AsSpan(),\n"
+         "                                                  mag_response->AsSpan(),\n"
+         "                                                  phase_response->AsSpan());\n"
+         "    // PATCH:fp-audio-biquad - perturb at the IDL outlet.\n"
+         "    fp_audio::Perturb(mag_response->AsSpan(), 0xB1AD);\n"
+         "    fp_audio::Perturb(phase_response->AsSpan(), 0xB1AE);\n"
+         "  }")
+    _simple("v8 BiquadFilter frequency response",
+            "third_party/blink/renderer/modules/webaudio/biquad_filter_node.cc",
+            a, b, rep, src_root, "PATCH:fp-audio-biquad")
+
+
+def patch_fp_audio_analyser(src_root: Path, rep: Report):
+    p = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "analyser_node.cc")
+    if not p.exists():
+        rep.record("v8 Analyser 4 outlets", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:fp-audio-analyser" in x:
+            rep.record("v8 Analyser 4 outlets", "ALREADY"); return
+        x = _fp8_insert(x)
+        pairs = [
+          ("  GetAnalyserHandler().GetFloatFrequencyData(array.Get(),\n"
+           "                                             context()->currentTime());",
+           "  GetAnalyserHandler().GetFloatFrequencyData(array.Get(),\n"
+           "                                             context()->currentTime());\n"
+           "  // PATCH:fp-audio-analyser\n"
+           "  fp_audio::Perturb(array->AsSpan(), 0xA4A1);"),
+          ("  GetAnalyserHandler().GetByteFrequencyData(array.Get(),\n"
+           "                                            context()->currentTime());",
+           "  GetAnalyserHandler().GetByteFrequencyData(array.Get(),\n"
+           "                                            context()->currentTime());\n"
+           "  fp_audio::Perturb(array->AsSpan(), 0xA4A2);"),
+          ("  GetAnalyserHandler().GetFloatTimeDomainData(array.Get());",
+           "  GetAnalyserHandler().GetFloatTimeDomainData(array.Get());\n"
+           "  fp_audio::Perturb(array->AsSpan(), 0xA4A3);"),
+          ("  GetAnalyserHandler().GetByteTimeDomainData(array.Get());",
+           "  GetAnalyserHandler().GetByteTimeDomainData(array.Get());\n"
+           "  fp_audio::Perturb(array->AsSpan(), 0xA4A4);"),
+        ]
+        n = 0
+        for a, b in pairs:
+            if a in x:
+                x = x.replace(a, b, 1); n += 1
+        if n != 4:
+            rep.record("v8 Analyser 4 outlets", "FAILED", "matched %d/4" % n); return
+        write_file(p, x)
+        rep.record("v8 Analyser 4 outlets", "APPLIED")
+    except Exception as e:
+        rep.record("v8 Analyser 4 outlets", "FAILED", str(e))
+
+
+def patch_fp_audio_copy(src_root: Path, rep: Report):
+    p = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "audio_buffer.cc")
+    if not p.exists():
+        rep.record("v8 AudioBuffer copy outlets", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:fp-audio-copy" in x:
+            rep.record("v8 AudioBuffer copy outlets", "ALREADY"); return
+        x = _fp8_insert(x)
+        a1 = "  dst.first(count).copy_from(src.subspan(buffer_offset, count));"
+        b1 = (a1 + "\n  // PATCH:fp-audio-copy - read outlet.\n"
+              "  fp_audio::Perturb(dst.first(count), 0xC0F1);")
+        n = 0
+        if a1 in x:
+            x = x.replace(a1, b1, 1); n += 1
+        a2 = "  dst.subspan(buffer_offset, count).copy_from(src.first(count));"
+        b2 = (a2 + "\n  // PATCH:fp-audio-copy - write outlet.\n"
+              "  fp_audio::Perturb(dst.subspan(buffer_offset, count), 0xC0F2);")
+        if a2 in x:
+            x = x.replace(a2, b2, 1); n += 1
+        if n != 2:
+            rep.record("v8 AudioBuffer copy outlets", "FAILED",
+                       "matched %d/2 copy lines" % n); return
+        write_file(p, x)
+        rep.record("v8 AudioBuffer copy outlets", "APPLIED")
+    except Exception as e:
+        rep.record("v8 AudioBuffer copy outlets", "FAILED", str(e))
+
+
+def patch_fp_audio_hardware(src_root: Path, rep: Report):
+    h = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "base_audio_context.h")
+    try:
+        x = read_file(h)
+        if "PATCH:fp-audio-hw" not in x:
+            x = _fp8_insert(x)
+            a = "  float sampleRate() const { return destination_handler_->SampleRate(); }"
+            b = ("  // PATCH:fp-audio-hw - only the JS-visible getter changes;\n"
+                 "  // internal SampleRate() stays native for the render pipeline.\n"
+                 "  float sampleRate() const {\n"
+                 "    const float spoofed = fp_audio::SampleRate();\n"
+                 "    return spoofed > 0.f\n"
+                 "        ? spoofed\n"
+                 "        : static_cast<float>(destination_handler_->SampleRate());\n"
+                 "  }")
+            if a not in x:
+                rep.record("v8 sampleRate getter", "FAILED", "anchor missing"); return
+            x = x.replace(a, b, 1)
+            write_file(h, x)
+            rep.record("v8 sampleRate getter", "APPLIED")
+        else:
+            rep.record("v8 sampleRate getter", "ALREADY")
+    except Exception as e:
+        rep.record("v8 sampleRate getter", "FAILED", str(e))
+
+    _simple("v8 maxChannelCount getter",
+            "third_party/blink/renderer/modules/webaudio/audio_destination_node.cc",
+            "  return GetAudioDestinationHandler().MaxChannelCount();",
+            ("  // PATCH:fp-audio-mcc\n"
+             "  const uint32_t native_count = GetAudioDestinationHandler().MaxChannelCount();\n"
+             "  if (!fp_audio::On(\"fp-audio\")) return native_count;\n"
+             "  static const uint32_t kCounts[] = {2u, 2u, 6u, 8u, 2u};\n"
+             "  return UNSAFE_TODO(kCounts[fp_audio::S(0x4CC1) % 5]);"),
+            rep, src_root, "PATCH:fp-audio-mcc")
+
+
+def patch_fp_audio_ctx(src_root: Path, rep: Report):
+    p = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "audio_context.cc")
+    if not p.exists():
+        rep.record("v8 audio_context getters", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:fp-audio-ctx" in x:
+            rep.record("v8 audio_context getters", "ALREADY"); return
+        x = _fp8_insert(x)
+        pairs = [
+          ("  return base_latency_;",
+           "  // PATCH:fp-audio-ctx\n"
+           "  return fp_audio::Jitter(base_latency_, 0.0008, 0xBA5E, true);"),
+          ("  return std::round(output_position_.hardware_output_latency / factor) * factor;",
+           "  const double native_latency =\n"
+           "      std::round(output_position_.hardware_output_latency / factor) * factor;\n"
+           "  return fp_audio::Jitter(native_latency, 0.0012, 0x0A71, true);"),
+          ("  result->setContextTime(output_position_.position);",
+           "  result->setContextTime(\n"
+           "      fp_audio::Jitter(output_position_.position, 0.00004, 0x71A1, true));"),
+          ("  result->setPerformanceTime(performance_time < 0.0 ? 0.0 : performance_time);",
+           "  result->setPerformanceTime(fp_audio::Jitter(\n"
+           "      performance_time < 0.0 ? 0.0 : performance_time, 0.00004, 0x71A2));"),
+        ]
+        n = 0
+        for a, b in pairs:
+            if a in x:
+                x = x.replace(a, b, 1); n += 1
+        if n != 4:
+            rep.record("v8 audio_context getters", "FAILED", "matched %d/4" % n); return
+        write_file(p, x)
+        rep.record("v8 audio_context getters", "APPLIED")
+    except Exception as e:
+        rep.record("v8 audio_context getters", "FAILED", str(e))
+
+
+def patch_fp_audio_stats(src_root: Path, rep: Report):
+    p = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "audio_playback_stats.cc")
+    if not p.exists():
+        rep.record("v8 AudioPlaybackStats getters", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:fp-audio-stats" in x:
+            rep.record("v8 AudioPlaybackStats getters", "ALREADY"); return
+        x = _fp8_insert(x)
+        x = x.replace("namespace blink {",
+                      "namespace blink {\n"
+                      "// PATCH:fp-audio-stats\n"
+                      "static double FpStatJ(double v, uint64_t salt) {\n"
+                      "  return fp_audio::Jitter(v, 0.0006, salt, true);\n"
+                      "}\n", 1)
+        # Wrap the full `return ConvertDOMHighResTimeStampToSeconds(...)` block
+        # of the three latency getters.
+        blocks = [
+          ("  return ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.average_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state)));",
+           "  return FpStatJ(ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.average_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state))), 0x57A1);"),
+          ("  return ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.min_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state)));",
+           "  return FpStatJ(ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.min_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state))), 0x57A2);"),
+          ("  return ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.max_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state)));",
+           "  return FpStatJ(ConvertDOMHighResTimeStampToSeconds(\n"
+           "      Performance::ClampTimeResolution(stats_.max_latency(),\n"
+           "                                       IsCrossOriginIsolated(script_state))), 0x57A3);"),
+        ]
+        n = 0
+        for a, b in blocks:
+            if a in x:
+                x = x.replace(a, b, 1); n += 1
+        if n != 3:
+            rep.record("v8 AudioPlaybackStats getters", "FAILED",
+                       "matched %d/3" % n); return
+        write_file(p, x)
+        rep.record("v8 AudioPlaybackStats getters", "APPLIED")
+    except Exception as e:
+        rep.record("v8 AudioPlaybackStats getters", "FAILED", str(e))
+
+def patch_fp_audio_worklet(src_root: Path, rep: Report):
+    h = src_root / ("third_party/blink/renderer/modules/webaudio/"
+                    "audio_worklet_global_scope.h")
+    if not h.exists():
+        rep.record("v8 AudioWorklet getters", "FAILED", "missing"); return
+    try:
+        x = read_file(h)
+        if "PATCH:fp-audio-worklet" in x:
+            rep.record("v8 AudioWorklet getters", "ALREADY"); return
+        x = _fp8_insert(x)
+        a = "  float sampleRate() const { return sample_rate_; }"
+        b = ("  // PATCH:fp-audio-worklet - same-process worklet thread;\n"
+             "  // fp::Seed() reads the process-wide CommandLine directly.\n"
+             "  float sampleRate() const {\n"
+             "    const float spoofed = fp_audio::SampleRate();\n"
+             "    return spoofed > 0.f ? spoofed : sample_rate_;\n"
+             "  }")
+        if a not in x:
+            rep.record("v8 AudioWorklet getters", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        a2 = "  uint64_t currentFrame() const { return current_frame_; }"
+        b2 = ("  uint64_t currentFrame() const {\n"
+              "    if (!fp_audio::On(\"fp-audio\")) return current_frame_;\n"
+              "    return current_frame_ + (fp_audio::S(0xCFA1) % 8);\n"
+              "  }")
+        if a2 in x:
+            x = x.replace(a2, b2, 1)
+        write_file(h, x)
+        rep.record("v8 AudioWorklet getters", "APPLIED")
+    except Exception as e:
+        rep.record("v8 AudioWorklet getters", "FAILED", str(e))
+
+
+ALL_FP_AUDIO = [
+    patch_fp_audio_h,
+    patch_fp_audio_offline, patch_fp_audio_biquad, patch_fp_audio_analyser,
+    patch_fp_audio_copy, patch_fp_audio_hardware, patch_fp_audio_ctx,
+    patch_fp_audio_stats, patch_fp_audio_worklet,
+]
+
+
 ALL_PATCHES = [
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
@@ -3839,7 +4152,7 @@ ALL_PATCHES = [
     patch_canvas_v5b,
     patch_no_lens_text_search,
     patch_v7_derived,
-] + ALL_V7
+] + ALL_V7 + ALL_FP_AUDIO
 
 
 

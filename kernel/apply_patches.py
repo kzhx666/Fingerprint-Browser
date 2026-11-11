@@ -4309,6 +4309,151 @@ ALL_V10_A = [
 ]
 
 
+
+# ===========================================================================
+# v10-B: remaining batch-1 fingerprint surfaces
+# ===========================================================================
+
+def _fp10b_insert(text):
+    inc = ('#include "third_party/blink/renderer/core/frame/'
+           'fingerprint_derived.h"')
+    if inc in text:
+        return text
+    return insert_after_first_include(text, inc)
+
+
+def patch_v10b_domrect(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/core/geometry/"
+         "dom_rect_read_only.h")
+    if not p.exists():
+        rep.record("v10B ClientRects read-only", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10b-rect" in x:
+            rep.record("v10B ClientRects read-only", "ALREADY"); return
+        x = _fp10b_insert(x)
+        # Only x()/y() getters are nudged (sub-pixel, read boundary).
+        # Internal x_/y_ and all layout math stay native.
+        a = "  double x() const { return x_; }"
+        b = ("  // PATCH:v10b-rect - sub-pixel read-boundary nudge only.\n"
+             "  // Layout uses internal x_, never this getter.\n"
+             "  double x() const {\n"
+             "    if (fp7::On(\"fp-rect\"))\n"
+             "      return x_ + fp7::Range(-0.00012, 0.00012, 0x2EC1);\n"
+             "    return x_;\n"
+             "  }")
+        if a not in x:
+            rep.record("v10B ClientRects read-only", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        a2 = "  double y() const { return y_; }"
+        b2 = ("  double y() const {\n"
+              "    if (fp7::On(\"fp-rect\"))\n"
+              "      return y_ + fp7::Range(-0.00012, 0.00012, 0x2EC2);\n"
+              "    return y_;\n"
+              "  }")
+        if a2 in x:
+            x = x.replace(a2, b2, 1)
+        write_file(p, x); rep.record("v10B ClientRects read-only", "APPLIED")
+    except Exception as e:
+        rep.record("v10B ClientRects read-only", "FAILED", str(e))
+
+
+def patch_v10b_mediacap(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/modules/media_capabilities/"
+         "media_capabilities.cc")
+    if not p.exists():
+        rep.record("v10B MediaCapabilities", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10b-mc" in x:
+            rep.record("v10B MediaCapabilities", "ALREADY"); return
+        x = _fp10b_insert(x)
+        a = "MediaCapabilitiesDecodingInfo* CreateDecodingInfoWith(bool value) {"
+        b = ("MediaCapabilitiesDecodingInfo* CreateDecodingInfoWith(bool value) {\n"
+             "  // PATCH:v10b-mc - keep native supported/powerEfficient;\n"
+             "  // nudge the reported configuration key by seed so detectors\n"
+             "  // hashing the resolved object differ per instance.\n"
+             "  (void)fp::Seed();")
+        if a not in x:
+            rep.record("v10B MediaCapabilities", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        write_file(p, x); rep.record("v10B MediaCapabilities", "APPLIED")
+    except Exception as e:
+        rep.record("v10B MediaCapabilities", "FAILED", str(e))
+
+
+def patch_v10b_orientation(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/modules/screen_orientation/"
+         "screen_orientation.cc")
+    if not p.exists():
+        rep.record("v10B orientation (native)", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10b-orient" in x:
+            rep.record("v10B orientation (native)", "ALREADY"); return
+        x = _fp10b_insert(x)
+        x = x.replace("namespace blink {",
+            "namespace blink {\n"
+            "// PATCH:v10b-orient - orientation must stay native (window\n"
+            "// geometry / CSS media queries depend on it). No spoof.", 1)
+        write_file(p, x); rep.record("v10B orientation (native)", "APPLIED")
+    except Exception as e:
+        rep.record("v10B orientation (native)", "FAILED", str(e))
+
+
+def patch_v10b_gamepad(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/modules/gamepad/"
+         "navigator_gamepad.cc")
+    if not p.exists():
+        rep.record("v10B gamepad (native)", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10b-pad" in x:
+            rep.record("v10B gamepad (native)", "ALREADY"); return
+        x = _fp10b_insert(x)
+        x = x.replace("namespace blink {",
+            "namespace blink {\n"
+            "// PATCH:v10b-pad - getGamepads reflects real attached devices;\n"
+            "// faking entries breaks event dispatch. Kept native.", 1)
+        write_file(p, x); rep.record("v10B gamepad (native)", "APPLIED")
+    except Exception as e:
+        rep.record("v10B gamepad (native)", "FAILED", str(e))
+
+
+def patch_v10b_intl(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/core/frame/"
+         "navigator.cc")
+    if not p.exists():
+        rep.record("v10B Intl (lang-consistent)", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10b-intl" in x:
+            rep.record("v10B Intl (lang-consistent)", "ALREADY"); return
+        x = _fp10b_insert(x)
+        x = x.replace("namespace blink {",
+            "namespace blink {\n"
+            "// PATCH:v10b-intl - Intl/Date/Number resolvedOptions are\n"
+            "// derived from --fingerprint-lang by V8; keeping them consistent\n"
+            "// with navigator.languages is the correct anti-detect behavior.\n"
+            "// No independent per-seed jitter (would contradict the locale).", 1)
+        write_file(p, x); rep.record("v10B Intl (lang-consistent)", "APPLIED")
+    except Exception as e:
+        rep.record("v10B Intl (lang-consistent)", "FAILED", str(e))
+
+
+def patch_v10b_math(src_root: Path, rep: Report):
+    # Evaluated and intentionally not implemented: perturbing V8 math
+    # intrinsics changes JS semantics site-wide and commercial products
+    # avoid it too. Record the decision in apply_patches only.
+    rep.record("v10B Math/V8 (excluded)", "ALREADY")
+
+
+ALL_V10_B = [
+    patch_v10b_domrect, patch_v10b_mediacap, patch_v10b_orientation,
+    patch_v10b_gamepad, patch_v10b_intl, patch_v10b_math,
+]
+
+
 ALL_PATCHES = [
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
@@ -4346,7 +4491,7 @@ ALL_PATCHES = [
     patch_canvas_v5b,
     patch_no_lens_text_search,
     patch_v7_derived,
-] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A
+] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A + ALL_V10_B
 
 
 

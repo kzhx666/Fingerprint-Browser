@@ -71,3 +71,4 @@ publish/
 Thumbs.db
 desktop.ini
 .DS_Store
+_exit-status.json

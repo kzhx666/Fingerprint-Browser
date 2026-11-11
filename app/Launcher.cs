@@ -148,6 +148,7 @@ public static class Launcher
                     Say($"✓ {pre.RegionNote}");
                 }
             }
+            ProxyPrecheck.Save(name, pre);
         }
 
         // ---- 4. 启动 ----

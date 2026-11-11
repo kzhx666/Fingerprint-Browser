@@ -110,6 +110,7 @@ public partial class MainWindow : Window
                 Seed = p.seed,
                 Rows = p.rows,
                 Status = isRunning ? $"运行中 ({running[dataDir]})" : "未运行",
+                ExitStatus = ProxyPrecheck.Display(name),
                 Dir = Paths.InstanceDir(name),
                 Running = isRunning
             });

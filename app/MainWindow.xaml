@@ -158,6 +158,13 @@
                         <DataGridTextColumn Header="平台" Binding="{Binding Platform}" Width="0.9*"/>
                         <DataGridTextColumn Header="时区" Binding="{Binding Timezone}" Width="1.4*"/>
                         <DataGridTextColumn Header="代理 / 节点" Binding="{Binding ProxyDisplay}" Width="2*"/>
+        <DataGridTextColumn Header="出口" Binding="{Binding ExitStatus}" Width="1.1*">
+            <DataGridTextColumn.ElementStyle>
+                <Style TargetType="TextBlock">
+                    <Setter Property="ToolTip" Value="{Binding ExitStatus}"/>
+                </Style>
+            </DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
                         <DataGridTextColumn Header="seed" Binding="{Binding Seed}" Width="0.8*"/>
                         <DataGridTextColumn Header="行" Binding="{Binding Rows}" Width="0.5*"/>
                         <DataGridTemplateColumn Header="状态" Width="1*">

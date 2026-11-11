@@ -80,6 +80,64 @@ public static class ProxyPrecheck
     }
 
     /// <summary>
+    /// 把本次预检结果持久化到 _exit-status.json（仅本机运行时数据，
+    /// 不进仓库；不存完整 IP，只留国家/地区）。管理界面据此显示每个实例的出口与地区比对状态。
+    /// </summary>
+    public static void Save(string instanceName, Result r)
+    {
+        try
+        {
+            var path = Path.Combine(Paths.Root, "_exit-status.json");
+            var all = LoadAll();
+            all[instanceName] = new ExitRecord {
+                ip = "", country = r.Country, region = r.Region,
+                city = r.City, declared = r.DeclaredRegion,
+                verdict = r.RegionVerdict, note = r.RegionNote,
+                at = DateTime.Now.ToString("MM-dd HH:mm")
+            };
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(path, JsonSerializer.Serialize(all, opts));
+        }
+        catch { }   // 状态文件写失败不影响启动
+    }
+
+    public sealed class ExitRecord
+    {
+        public string ip { get; set; } = "";
+        public string country { get; set; } = "";
+        public string region { get; set; } = "";
+        public string city { get; set; } = "";
+        public string declared { get; set; } = "";
+        public string verdict { get; set; } = "";
+        public string note { get; set; } = "";
+        public string at { get; set; } = "";
+    }
+
+    public static Dictionary<string, ExitRecord> LoadAll()
+    {
+        try
+        {
+            var path = Path.Combine(Paths.Root, "_exit-status.json");
+            if (!File.Exists(path)) return new();
+            return JsonSerializer.Deserialize<Dictionary<string, ExitRecord>>(
+                       File.ReadAllText(path)) ?? new();
+        }
+        catch { return new(); }
+    }
+
+    /// <summary>给界面用的一行摘要：US ✓ / HK ⚠ / 未检。</summary>
+    public static string Display(string instanceName)
+    {
+        var all = LoadAll();
+        if (!all.TryGetValue(instanceName, out var e)) return "未检";
+        if (string.IsNullOrEmpty(e.country)) return "未检";
+        var badge = e.verdict switch {
+            "match" => "✓", "mismatch" => "⚠", _ => "·"
+        };
+        return $"{e.country} {badge}";
+    }
+
+    /// <summary>
     /// 从实例名称前缀 + 时区推断声明地区，返回 ISO 两位国家码或空。
     /// 显式 region 字段优先；支持中文名/英文名/ISO 码。
     /// </summary>

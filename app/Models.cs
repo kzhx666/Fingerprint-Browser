@@ -70,6 +70,7 @@ public sealed class InstanceRow : INotifyPropertyChanged
     public string Seed { get; set; } = "";
     public string Rows { get; set; } = "";
     public string Status { get; set; } = "";
+    public string ExitStatus { get; set; } = "";
     public string Dir { get; set; } = "";
     public bool Running { get; set; }
     public string SortKey { get; set; } = "";

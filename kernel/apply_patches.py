@@ -4115,6 +4115,200 @@ ALL_FP_AUDIO = [
 ]
 
 
+
+# ===========================================================================
+# v10-A: remaining commercial fingerprint surfaces (batch 1 of final build)
+# ===========================================================================
+
+def _fp10_insert(text):
+    inc = ('#include "third_party/blink/renderer/core/frame/'
+           'fingerprint_derived.h"')
+    if inc in text:
+        return text
+    return insert_after_first_include(text, inc)
+
+
+def _fp10_simple(name, rel, anchor, repl, rep, src_root, marker):
+    p = src_root / rel
+    if not p.exists():
+        rep.record(name, "FAILED", rel + " missing"); return
+    try:
+        x = read_file(p)
+        if marker in x:
+            rep.record(name, "ALREADY"); return
+        if anchor not in x:
+            rep.record(name, "FAILED", "anchor missing"); return
+        x = _fp10_insert(x)
+        x = x.replace(anchor, repl, 1)
+        write_file(p, x); rep.record(name, "APPLIED")
+    except Exception as e:
+        rep.record(name, "FAILED", str(e))
+
+
+def patch_v10_webgl(src_root: Path, rep: Report):
+    rel = ("third_party/blink/renderer/modules/webgl/"
+           "webgl_rendering_context_base.cc")
+    p = src_root / rel
+    if not p.exists():
+        rep.record("v10 WebGL precision", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-gl" in x:
+            rep.record("v10 WebGL precision", "ALREADY"); return
+        x = _fp10_insert(x)
+        a = '  return MakeGarbageCollected<WebGLShaderPrecisionFormat>(range[0], range[1],\n                                                          precision);'
+        b = '  // PATCH:v10-gl - per-seed nudge on the reported precision bits while\n  // keeping range identical to native (ANGLE/D3D11 uniform values).\n  if (fp7::On("fp-webgl")) {\n    precision = 23 + fp7::Pick(2, 0x6C01);\n  }\n  return MakeGarbageCollected<WebGLShaderPrecisionFormat>(range[0], range[1],\n                                                          precision);'
+        if a not in x:
+            rep.record("v10 WebGL precision", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        # readPixels / extensions: documented consistent-with-2D marker
+        x = x.replace("// PATCH:v7-glread marker",
+            "// PATCH:v7-glread marker (readPixels shares the 2D encode outlet)",
+            1)
+        write_file(p, x); rep.record("v10 WebGL precision", "APPLIED")
+    except Exception as e:
+        rep.record("v10 WebGL precision", "FAILED", str(e))
+
+
+def patch_v10_media(src_root: Path, rep: Report):
+    rel = ("third_party/blink/renderer/modules/mediastream/"
+           "media_devices.cc")
+    p = src_root / rel
+    if not p.exists():
+        rep.record("v10 MediaDevices", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-media" in x:
+            rep.record("v10 MediaDevices", "ALREADY"); return
+        x = _fp10_insert(x)
+        a = "  result_tracker->Resolve(media_devices);"
+        b = ("  // PATCH:v10-media - stable per-seed rotation of the NATIVE\n"
+             "  // device list; ids/labels/count unchanged.\n"
+             "  if (fp7::On(\"fp-media\") && media_devices.size() > 1) {\n"
+             "    const size_t k = static_cast<size_t>(\n"
+             "        fp7::Pick(static_cast<int>(media_devices.size()), 0x4ED1));\n"
+             "    std::rotate(media_devices.begin(),\n"
+             "                UNSAFE_BUFFERS(media_devices.begin() + k),\n"
+             "                media_devices.end());\n"
+             "  }\n"
+             "  result_tracker->Resolve(media_devices);")
+        if a not in x:
+            rep.record("v10 MediaDevices", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        if "#include <algorithm>" not in x:
+            x = x.replace("#include", "#include <algorithm>\n#include", 1)
+        write_file(p, x); rep.record("v10 MediaDevices", "APPLIED")
+    except Exception as e:
+        rep.record("v10 MediaDevices", "FAILED", str(e))
+
+
+def patch_v10_speech(src_root: Path, rep: Report):
+    rel = "third_party/blink/renderer/modules/speech/speech_synthesis.cc"
+    p = src_root / rel
+    if not p.exists():
+        rep.record("v10 speech rotation", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-speech" in x:
+            rep.record("v10 speech rotation", "ALREADY"); return
+        x = _fp10_insert(x)
+        a = "  return voice_list_;\n}"
+        b = ("  // PATCH:v10-speech - stable rotation of the native voice list.\n"
+             "  if (fp7::On(\"fp-speech\") && voice_list_.size() > 1) {\n"
+             "    const size_t k = static_cast<size_t>(\n"
+             "        fp7::Pick(static_cast<int>(voice_list_.size()), 0x5EEC));\n"
+             "    std::rotate(voice_list_.begin(),\n"
+             "                UNSAFE_BUFFERS(voice_list_.begin() + k),\n"
+             "                voice_list_.end());\n"
+             "  }\n"
+             "  return voice_list_;\n}")
+        if a not in x:
+            rep.record("v10 speech rotation", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        if "#include <algorithm>" not in x:
+            x = x.replace("#include", "#include <algorithm>\n#include", 1)
+        write_file(p, x); rep.record("v10 speech rotation", "APPLIED")
+    except Exception as e:
+        rep.record("v10 speech rotation", "FAILED", str(e))
+
+
+def patch_v10_webgpu(src_root: Path, rep: Report):
+    rel = "third_party/blink/renderer/modules/webgpu/gpu_adapter.cc"
+    p = src_root / rel
+    if not p.exists():
+        rep.record("v10 WebGPU limits", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-webgpu" in x:
+            rep.record("v10 WebGPU limits", "ALREADY"); return
+        x = _fp10_insert(x)
+        a = "  limits_ = MakeGarbageCollected<GPUSupportedLimits>(limits);"
+        b = ("  // PATCH:v10-webgpu - per-seed nudge on two limits.\n"
+             "  if (fp7::On(\"fp-webgpu\")) {\n"
+             "    limits.maxBindGroups = 4u + fp7::Pick(2, 0x6A71);\n"
+             "    limits.maxSamplersPerShaderStage = 16u - fp7::Pick(2, 0x6A72);\n"
+             "  }\n"
+             "  limits_ = MakeGarbageCollected<GPUSupportedLimits>(limits);")
+        if a not in x:
+            rep.record("v10 WebGPU limits", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        write_file(p, x); rep.record("v10 WebGPU limits", "APPLIED")
+    except Exception as e:
+        rep.record("v10 WebGPU limits", "FAILED", str(e))
+
+
+def patch_v10_perf(src_root: Path, rep: Report):
+    rel = "third_party/blink/renderer/core/timing/performance.cc"
+    p = src_root / rel
+    if not p.exists():
+        rep.record("v10 Performance.memory", "FAILED", "missing"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-perf" in x:
+            rep.record("v10 Performance.memory", "ALREADY"); return
+        x = _fp10_insert(x)
+        # jsHeapSizeLimit getter is defined in memory_info.cc in this version
+        # Marker-only here to avoid fragile anchor; real patch applied below.
+        x = x.replace("namespace blink {",
+                      "namespace blink {\n// PATCH:v10-perf marker", 1)
+        write_file(p, x); rep.record("v10 Performance.memory", "APPLIED")
+    except Exception as e:
+        rep.record("v10 Performance.memory", "FAILED", str(e))
+
+
+def patch_v10_meminfo(src_root: Path, rep: Report):
+    p = (src_root / "third_party/blink/renderer/core/timing/"
+         "memory_info.h")
+    if not p.exists():
+        rep.record("v10 memory_info", "FAILED", "file not found"); return
+    try:
+        x = read_file(p)
+        if "PATCH:v10-meminfo" in x:
+            rep.record("v10 memory_info", "ALREADY"); return
+        x = _fp10_insert(x)
+        a = "  uint64_t jsHeapSizeLimit() const { return info_.js_heap_size_limit; }"
+        b = ("  // PATCH:v10-meminfo - only the JS-visible getter changes.\n"
+             "  uint64_t jsHeapSizeLimit() const {\n"
+             "    if (fp7::On(\"fp-perf\")) {\n"
+             "      static const uint64_t kL[] = {2147483648ull, 4294967296ull,\n"
+             "                                   1073741824ull};\n"
+             "      return UNSAFE_TODO(kL[fp7::Pick(3, 0x4E01)]);\n"
+             "    }\n"
+             "    return info_.js_heap_size_limit;\n"
+             "  }")
+        if a not in x:
+            rep.record("v10 memory_info", "FAILED", "anchor missing"); return
+        x = x.replace(a, b, 1)
+        write_file(p, x); rep.record("v10 memory_info", "APPLIED")
+    except Exception as e:
+        rep.record("v10 memory_info", "FAILED", str(e))
+
+ALL_V10_A = [
+    patch_v10_webgl, patch_v10_media, patch_v10_speech,
+    patch_v10_webgpu, patch_v10_perf, patch_v10_meminfo,
+]
+
+
 ALL_PATCHES = [
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
@@ -4152,7 +4346,7 @@ ALL_PATCHES = [
     patch_canvas_v5b,
     patch_no_lens_text_search,
     patch_v7_derived,
-] + ALL_V7 + ALL_FP_AUDIO
+] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A
 
 
 

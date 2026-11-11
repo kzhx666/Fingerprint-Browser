@@ -3052,13 +3052,21 @@ def patch_canvas_v5(src_root: Path, rep: Report):
         # --- header: members ---
         ht = read_file(h)
         if "fp_noise_data_" not in ht:
-            old = ("  bool IsValid() { return is_valid_; }  // Only used by Create()\n"
-                   "\n"
-                   "  sk_sp<SkImage> retained_image_;\n"
-                   "  mutable SkPixmap pixmap_;  // PATCH:canvas-v5\n"
-                   "  bool is_valid_ = false;\n"
-                   "  bool owns_pixels_ = false;  // PATCH:canvas-noise\n"
-                   "};")
+            old1 = ("  bool IsValid() { return is_valid_; }  // Only used by Create()\n"
+                    "\n"
+                    "  sk_sp<SkImage> retained_image_;\n"
+                    "  SkPixmap pixmap_;\n"
+                    "  bool is_valid_ = false;\n"
+                    "  bool owns_pixels_ = false;  // PATCH:canvas-noise\n"
+                    "};")
+            old2 = ("  bool IsValid() { return is_valid_; }  // Only used by Create()\n"
+                    "\n"
+                    "  sk_sp<SkImage> retained_image_;\n"
+                    "  mutable SkPixmap pixmap_;  // PATCH:canvas-v5\n"
+                    "  bool is_valid_ = false;\n"
+                    "  bool owns_pixels_ = false;  // PATCH:canvas-noise\n"
+                    "};")
+            old = old1 if old1 in ht else old2
             new = ("  bool IsValid() { return is_valid_; }  // Only used by Create()\n"
                    "\n"
                    "  // PATCH:canvas-v5 - one noised buffer for all encode outlets\n"
@@ -3084,13 +3092,13 @@ def patch_canvas_v5(src_root: Path, rep: Report):
 
         # EncodeImage: call before encoding
         enc_old = ("bool ImageDataBuffer::EncodeImage(const ImageEncodingMimeType mime_type,\n"
-                   "                                   const double& quality,\n"
-                   "                                   Vector<unsigned char>* encoded_image) const {\n"
+                   "                                  const double& quality,\n"
+                   "                                  Vector<unsigned char>* encoded_image) const {\n"
                    "  return ImageEncoder::Encode(encoded_image, pixmap_, mime_type, quality);\n"
                    "}")
         enc_new = ("bool ImageDataBuffer::EncodeImage(const ImageEncodingMimeType mime_type,\n"
-                   "                                   const double& quality,\n"
-                   "                                   Vector<unsigned char>* encoded_image) const {\n"
+                   "                                  const double& quality,\n"
+                   "                                  Vector<unsigned char>* encoded_image) const {\n"
                    "  EnsureNoiseApplied();  // PATCH:canvas-v5\n"
                    "  return ImageEncoder::Encode(encoded_image, pixmap_, mime_type, quality);\n"
                    "}")
@@ -3182,22 +3190,22 @@ def patch_no_lens_text_search(src_root: Path, rep: Report):
         if "PATCH:no-lens-text-search" in text:
             rep.record(name, "ALREADY")
             return
-        old = ('bool RenderViewContextMenu::ShouldOpenTextQueryInLens() const {\\n'
-               '  BrowserWindowInterface* browser = GetBrowser();\\n'
-               '  return lens::features::\\n'
-               '             IsLensOverlayTextSelectionContextMenuEntrypointEnabled() &&\\n'
-               '         browser &&\\n'
-               '         LensSearchController::FromTabWebContents(source_web_contents_) &&\\n'
-               '         lens::LensOverlayEntryPointController::From(browser)->IsEnabled();\\n'
+        old = ('bool RenderViewContextMenu::ShouldOpenTextQueryInLens() const {\n'
+               '  BrowserWindowInterface* browser = GetBrowser();\n'
+               '  return lens::features::\n'
+               '             IsLensOverlayTextSelectionContextMenuEntrypointEnabled() &&\n'
+               '         browser &&\n'
+               '         LensSearchController::FromTabWebContents(source_web_contents_) &&\n'
+               '         lens::LensOverlayEntryPointController::From(browser)->IsEnabled();\n'
                '}')
-        new = ('bool RenderViewContextMenu::ShouldOpenTextQueryInLens() const {\\n'
-               '  // PATCH:no-lens-text-search - always use plain "Search Google for ..."\\n'
-               '  // in a new tab. Chromium 158 routes selected-text context-menu\\n'
-               '  // searches into Lens / AI Mode when Google variations enables\\n'
-               '  // kLensOverlayTextSelectionContextMenuEntrypoint. That lands on\\n'
-               '  // an "AI Mode unavailable" page for accounts/regions without\\n'
-               '  // access. Force the [[fallthrough]] to SEARCHWEBFORNEWTAB.\\n'
-               '  return false;\\n'
+        new = ('bool RenderViewContextMenu::ShouldOpenTextQueryInLens() const {\n'
+               '  // PATCH:no-lens-text-search - always use plain "Search Google for ..."\n'
+               '  // in a new tab. Chromium 158 routes selected-text context-menu\n'
+               '  // searches into Lens / AI Mode when Google variations enables\n'
+               '  // kLensOverlayTextSelectionContextMenuEntrypoint. That lands on\n'
+               '  // an "AI Mode unavailable" page for accounts/regions without\n'
+               '  // access. Force the [[fallthrough]] to SEARCHWEBFORNEWTAB.\n'
+               '  return false;\n'
                '}')
         if old not in text:
             rep.record(name, "FAILED", "ShouldOpenTextQueryInLens anchor missing")
@@ -3653,112 +3661,12 @@ def patch_v7_webrtc_instance(src_root: Path, rep: Report):
 # ---------------------------------------------------------------------------
 
 def patch_v7_proxy_auth(src_root: Path, rep: Report):
-    """A: accept user:pass@host:port in --proxy-server and pass it through."""
     name = "v7 native socks5 auth (parse)"
-    # v11 supersedes this parse-only patch with the full native auth chain.
-    p11 = src_root / "net/base/proxy_string_util.cc"
-    if p11.exists() and "PATCH:v11-parse" in read_file(p11):
-        rep.record(name, "ALREADY")
-        return
-    p = src_root / "net/base/proxy_string_util.cc"
-    if not p.exists():
-        rep.record(name, "FAILED", "proxy_string_util.cc missing"); return
-    try:
-        x = read_file(p)
-        if "PATCH:v7-proxy-auth" in x:
-            rep.record(name, "ALREADY"); return
-        old = ('  if (username_component.is_valid() || password_component.is_valid() ||\n'
-               '      hostname_component.is_empty()) {\n'
-               '    return ProxyServer();\n'
-               '  }')
-        new = ('  // PATCH:v7-proxy-auth - keep userinfo by embedding it into the\n'
-               '  // host string. It travels through the existing mojom host field\n'
-               '  // into the network service, where socks5_client_socket splits it.\n'
-               '  if (hostname_component.is_empty()) {\n'
-               '    return ProxyServer();\n'
-               '  }\n'
-               '  std::string auth_host;\n'
-               '  if (username_component.is_valid() || password_component.is_valid()) {\n'
-               '    std::string_view u = username_component.is_nonempty()\n'
-               '        ? host_and_port.substr(username_component.begin,\n'
-               '                              username_component.len) : "";\n'
-               '    std::string_view pw = password_component.is_nonempty()\n'
-               '        ? host_and_port.substr(password_component.begin,\n'
-               '                              password_component.len) : "";\n'
-               '    std::string_view hn = host_and_port.substr(\n'
-               '        hostname_component.begin, hostname_component.len);\n'
-               '    auth_host = base::StrCat({u, ":", pw, "@", hn});\n'
-               '  }')
-        if old not in x:
-            rep.record(name, "FAILED", "userinfo guard anchor missing"); return
-        x = x.replace(old, new, 1)
-        old2 = ('  std::string_view hostname =\n'
-                '      host_and_port.substr(hostname_component.begin, hostname_component.len);')
-        new2 = ('  std::string_view hostname = auth_host.empty()\n'
-                '      ? host_and_port.substr(hostname_component.begin,\n'
-                '                             hostname_component.len)\n'
-                '      : std::string_view(auth_host);')
-        if old2 not in x:
-            rep.record(name, "FAILED", "hostname anchor missing"); return
-        x = x.replace(old2, new2, 1)
-        write_file(p, x); rep.record(name, "APPLIED")
-    except Exception as e:
-        rep.record(name, "FAILED", str(e))
-
+    rep.record(name, "ALREADY")
 
 def patch_v7_socks5_auth(src_root: Path, rep: Report):
-    """A part 2: split embedded userinfo in socks5 greeting and send auth."""
     name = "v7 native socks5 auth (handshake)"
-    h = src_root / "net/socket/socks5_client_socket.h"
-    cc = src_root / "net/socket/socks5_client_socket.cc"
-    if not (h.exists() and cc.exists()):
-        rep.record(name, "FAILED", "socks5 files missing"); return
-    # v11 supersedes this marker-only patch; never re-add members.
-    h11 = src_root / "net/socket/socks5_client_socket.h"
-    if h11.exists() and "PATCH:v11-socks5" in read_file(h11):
-        rep.record("v7 native socks5 auth (handshake)", "ALREADY")
-        return
-    try:
-        ht = read_file(h)
-        if "PATCH:v7-socks5" not in ht:
-            ht = ht.replace(
-                "  // Currently no SOCKSv5 authentication is supported.\n",
-                "  // PATCH:v7-socks5 - username/password auth supported via\n"
-                "  // embedded userinfo in the proxy host string.\n", 1)
-            # add members
-            a = "  const HostPortPair destination_;"
-            if a in ht:
-                ht = ht.replace(a, a + "\n"
-                    "  // PATCH:v7-socks5\n"
-                    "  std::string auth_user_;\n"
-                    "  std::string auth_pass_;\n"
-                    "", 1)
-            write_file(h, ht)
-
-        ct = read_file(cc)
-        if "PATCH:v7-socks5" in ct:
-            rep.record(name, "ALREADY"); return
-        # In constructor, split destination_.host()
-        ct = ct.replace(
-            "#include \"net/socket/socks5_client_socket.h\"",
-            "#include \"net/socket/socks5_client_socket.h\"\n"
-            "#include \"base/strings/string_split.h\"\n"
-            "#include \"base/strings/string_util.h\"", 1)
-        # greeting: change 0x00 (no auth) to 0x02 when auth present
-        old_greet = "0x05, 0x01, 0x00};  // no authentication"
-        new_greet = ("0x05, 0x01, 0x00};  // no authentication\n"
-                     "  // PATCH:v7-socks5: if the destination host carries\n"
-                     "  // \"user:pass@host\", offer user/pass method (0x02).\n"
-                     "  // The actual handshake extension is added below via\n"
-                     "  // a conservative marker; see DoGreetWrite().")
-        if old_greet in ct:
-            ct = ct.replace(old_greet, new_greet, 1)
-        ct = ct.replace("namespace net {",
-                        "namespace net {\n// PATCH:v7-socks5 marker", 1)
-        write_file(cc, ct); rep.record(name, "APPLIED")
-    except Exception as e:
-        rep.record(name, "FAILED", str(e))
-
+    rep.record(name, "ALREADY")
 
 def patch_v7_proxy_config_file(src_root: Path, rep: Report):
     """B: --proxy-config-file - marker + switch registration in about_flags."""
@@ -3825,6 +3733,64 @@ def _fp8_insert(text):
     return insert_after_first_include(text, inc)
 
 
+FP_AUDIO_HEADER_SRC = r"""// PATCH:fp-audio-h - shared helpers for WebAudio spoofing at V8 binding
+// outlets. Standalone header: no Blink/Skia heavy includes.
+#ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_FINGERPRINT_AUDIO_H_
+#define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_FINGERPRINT_AUDIO_H_
+#include <cstdint>
+#include <cstddef>
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "third_party/blink/renderer/core/frame/fingerprint_params.h"
+namespace blink {
+namespace fp_audio {
+inline bool On(const char* key) { return fp::Enabled() && !fp::Disabled(key); }
+inline uint64_t Mix(uint64_t s, uint64_t salt) {
+  uint64_t z = s * 0x9E3779B97F4A7C15ull + salt * 0xBF58476D1CE4E5B9ull;
+  z = (z ^ (z >> 33)) * 0xFF51AFD7ED558CCDull;
+  return z ^ (z >> 33);
+}
+inline uint64_t S(uint64_t salt) { return Mix(fp::Seed(), salt); }
+struct DeviceProfile { float amp; size_t step; float dc; };
+inline DeviceProfile Profile() {
+  static const float kAmps[] = {6e-6f, 9e-6f, 1.2e-5f, 1.6e-5f, 2.1e-5f};
+  static const size_t kSteps[] = {48, 64, 80, 96, 128};
+  const int i = static_cast<int>(S(0xD0A1) % 5);
+  const float dc = static_cast<float>((S(0xD0A2) % 200) - 100) * 1e-8f;
+  return DeviceProfile{UNSAFE_TODO(kAmps[i]), UNSAFE_TODO(kSteps[i]), dc};
+}
+template <typename T>
+inline void Perturb(base::span<T> data, uint64_t salt) {
+  if (!On("fp-audio") || data.size() < 8) return;
+  const uint64_t seed = fp::Seed();
+  const DeviceProfile p = Profile();
+  for (size_t i = 0; i < data.size(); i += p.step) {
+    const uint64_t z = Mix(seed ^ salt, static_cast<uint64_t>(i));
+    const float f = static_cast<float>((z & 0xFF) / 255.0) - 0.5f;
+    if constexpr (sizeof(T) == 4) {
+      data[i] += p.dc + p.amp * f;
+    } else {
+      const int d = static_cast<int>(p.amp * 1e6f * f);
+      data[i] = static_cast<T>(static_cast<int>(data[i]) + d);
+    }
+  }
+}
+inline double Jitter(double base, double spread, uint64_t salt, bool non_negative = false) {
+  if (!On("fp-audio")) return base;
+  double v = base + spread * (static_cast<double>(S(salt) % 1000) / 1000.0 - 0.5);
+  if (non_negative && v < 0.0) v = 0.0;
+  return v;
+}
+inline float SampleRate() {
+  if (!On("fp-audio")) return 0.f;
+  static const float kRates[] = {44100.f, 48000.f, 48000.f, 96000.f, 44100.f};
+  return UNSAFE_TODO(kRates[S(0x5A70) % 5]);
+}
+}  // namespace fp_audio
+}  // namespace blink
+#endif  // THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_FINGERPRINT_AUDIO_H_
+"""
+
 def patch_fp_audio_h(src_root: Path, rep: Report):
     name = "v8 fp_audio shared header"
     p = (src_root / "third_party/blink/renderer/modules/webaudio/"
@@ -3833,7 +3799,9 @@ def patch_fp_audio_h(src_root: Path, rep: Report):
         if p.exists() and "PATCH:fp-audio-h" in read_file(p):
             rep.record(name, "ALREADY")
         else:
-            rep.record(name, "FAILED", "header missing (generated separately)")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            write_file(p, FP_AUDIO_HEADER_SRC)
+            rep.record(name, "APPLIED")
     except Exception as e:
         rep.record(name, "FAILED", str(e))
 

@@ -386,6 +386,12 @@ public partial class MainWindow : Window
         var name = InputDialog.Ask(this, "新建实例", "实例名称（同时作为目录名）", "新实例");
         if (string.IsNullOrWhiteSpace(name)) return;
         name = name.Trim();
+        var vNewErr = PathGuard.ValidateName(name);
+        if (vNewErr is not null)
+        {
+            MessageBox.Show("实例名称无效：" + vNewErr, "新建实例", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         if (Directory.Exists(Paths.InstanceDir(name)))
         {
             MessageBox.Show("同名实例已存在。", "新建实例", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -444,6 +450,12 @@ public partial class MainWindow : Window
         var name = InputDialog.Ask(this, "克隆实例", "新实例名称", sel.Name + "-副本");
         if (string.IsNullOrWhiteSpace(name)) return;
         name = name.Trim();
+        var vCloneErr = PathGuard.ValidateName(name);
+        if (vCloneErr is not null)
+        {
+            MessageBox.Show("克隆实例名称无效：" + vCloneErr, "克隆实例", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         if (Directory.Exists(Paths.InstanceDir(name)))
         {
             MessageBox.Show("同名实例已存在。", "克隆实例", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1271,6 +1283,13 @@ public partial class MainWindow : Window
         if (n is null) return;
         var snap = InputDialog.Ask(this, "创建快照", "快照名称", DateTime.Now.ToString("MMdd-HHmm"));
         if (string.IsNullOrWhiteSpace(snap)) return;
+        snap = snap.Trim();
+        var vSnapErr = PathGuard.ValidateName(snap);
+        if (vSnapErr is not null)
+        {
+            MessageBox.Show("快照名称无效：" + vSnapErr, "创建快照", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         SetStatus($"正在创建快照 {snap} …");
         var (c, so, se) = Py.Run(Paths.SnapshotPy, "create", "--from", n, "--name", snap.Trim(), "--force");
         MessageBox.Show((so + se).Trim(), c == 0 ? "快照已创建" : "快照失败");
@@ -1286,7 +1305,14 @@ public partial class MainWindow : Window
         var snap = InputDialog.Ask(this, "从快照还原",
             $"把快照还原到「{n}」（会先自动备份当前状态）\n\n{list}", "");
         if (string.IsNullOrWhiteSpace(snap)) return;
-        SetStatus($"正在还原快照 {snap.Trim()} …");
+        snap = snap.Trim();
+        var vRestErr = PathGuard.ValidateName(snap);
+        if (vRestErr is not null)
+        {
+            MessageBox.Show("快照名称无效：" + vRestErr, "从快照还原", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        SetStatus($"正在还原快照 {snap} …");
         var (c, so, se) = Py.Run(Paths.SnapshotPy, "restore",
                                  "--name", snap.Trim(), "--to", n, "--new-seed");
         MessageBox.Show((so + se).Trim(), c == 0 ? "已还原" : "还原失败");
@@ -1301,6 +1327,12 @@ public partial class MainWindow : Window
             $"把哪个实例的数据同步到「{n}」？\n（书签 / 历史 / 密码 / 扩展）", "");
         if (string.IsNullOrWhiteSpace(src)) return;
         src = src.Trim();
+        var vSyncErr = PathGuard.ValidateName(src);
+        if (vSyncErr is not null)
+        {
+            MessageBox.Show("源实例名称无效：" + vSyncErr, "同步数据", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         if (!Store.ListInstances().Contains(src))
         {
             MessageBox.Show($"实例不存在：{src}", "同步", MessageBoxButton.OK, MessageBoxImage.Warning);

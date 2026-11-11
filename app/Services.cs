@@ -92,8 +92,12 @@ public static class Store
 
     public static void SaveProfile(string name, Profile p)
     {
+        var v = PathGuard.ValidateName(name);
+        if (v != null) throw new ArgumentException("实例名不合法: " + v);
+        var dir = Paths.InstanceDir(name);
+        if (!PathGuard.IsUnder(Paths.Root, dir)) throw new ArgumentException("越界路径");
         p.name = name;
-        Directory.CreateDirectory(Paths.InstanceDir(name));
+        Directory.CreateDirectory(dir);
         Json.Write(Paths.ProfileJson(name), p);
     }
 
@@ -139,8 +143,14 @@ public static class Store
         error = "";
         if (string.IsNullOrWhiteSpace(newName)) { error = "新名称为空"; return false; }
         if (oldName == newName) return true;
+        var vOld = PathGuard.ValidateName(oldName);
+        if (vOld != null) { error = "原实例名称不合法: " + vOld; return false; }
+        var vNew = PathGuard.ValidateName(newName);
+        if (vNew != null) { error = "新实例名称不合法: " + vNew; return false; }
         var oldDir = Paths.InstanceDir(oldName);
         var newDir = Paths.InstanceDir(newName);
+        if (!PathGuard.IsUnder(Paths.Root, oldDir) || !PathGuard.IsUnder(Paths.Root, newDir))
+        { error = "越界路径"; return false; }
         if (!Directory.Exists(oldDir)) { error = "原实例目录不存在"; return false; }
         if (Directory.Exists(newDir)) { error = "已存在同名实例：" + newName; return false; }
 

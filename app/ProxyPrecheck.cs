@@ -49,30 +49,12 @@ public static class ProxyPrecheck
         r.ProxyUsed = m.Groups[1].Value.Trim('"');
         say?.Invoke($"预检出口 IP（经 {r.ProxyUsed}）…");
 
-        // v11: --proxy-server=socks5://user:pass@host:port 是内核原生链路，
-        // WebProxy 不认识该 scheme，HTTP 探测会误判为代理挂掉。此时只做
-        // TCP 连通性检查，出口国家留空（地区比对会跳过，不误拦启动）。
+        // P1-6: 带账密 socks5 预检必须真的执行认证并出网探测，
+        // 只做 TCP 连通会让"密码错误/上游不可用"漏过。
         if (r.ProxyUsed.StartsWith("socks5://", StringComparison.OrdinalIgnoreCase)
             && r.ProxyUsed.Contains("@"))
         {
-            try
-            {
-                var u = new Uri(r.ProxyUsed);
-                using var tcp = new System.Net.Sockets.TcpClient();
-                var task = tcp.ConnectAsync(u.Host, u.Port);
-                if (!task.Wait(TimeSpan.FromSeconds(6)) || !tcp.Connected)
-                {
-                    r.Ok = false; r.Error = "原生 socks5 节点连不上";
-                    return r;
-                }
-                r.Ok = true;
-                r.Error = "原生 socks5（不经 HTTP 探测）";
-                return r;
-            }
-            catch (Exception e)
-            {
-                r.Ok = false; r.Error = e.Message; return r;
-            }
+            return CheckSocks5Auth(r, say);
         }
 
         try
@@ -80,8 +62,9 @@ public static class ProxyPrecheck
             var handler = new HttpClientHandler
             {
                 Proxy = new WebProxy(r.ProxyUsed),
-                UseProxy = true,
-                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+                UseProxy = true
+                // P0-5: 不再设置 ServerCertificateCustomValidationCallback，
+                // 使用 .NET 默认严格证书链校验；证书异常会抛异常使预检失败。
             };
             using var hc = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(12) };
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -244,6 +227,112 @@ public static class ProxyPrecheck
             r.RegionNote = $"地区不符：声明 {r.DeclaredRegion}，但出口 {actual}" +
                            $" ({r.Region}/{r.City})。Google 等服务可能据此判定地区异常。";
         }
+    }
+
+    /// <summary>
+    /// P1-6: RFC1928 SOCKS5 用户名/密码认证 + CONNECT + TLS 出网探测。
+    /// 端口通但密码错 / 上游不通 -> 预检失败，不会误放行裸奔。
+    /// P0-5: SslStream 使用默认严格证书校验（不传回调）。
+    /// </summary>
+    static Result CheckSocks5Auth(Result r, Action<string>? say)
+    {
+        System.Net.Sockets.TcpClient? tcp = null;
+        try
+        {
+            var u = new Uri(r.ProxyUsed);
+            var user = Uri.UnescapeDataString(u.UserInfo.Split(':')[0]);
+            var pass = u.UserInfo.Contains(':')
+                ? Uri.UnescapeDataString(u.UserInfo.Substring(u.UserInfo.IndexOf(':') + 1)) : "";
+            tcp = new System.Net.Sockets.TcpClient();
+            var ct = tcp.ConnectAsync(u.Host, u.Port);
+            if (!ct.Wait(TimeSpan.FromSeconds(8)) || !tcp.Connected)
+            { r.Ok = false; r.Error = "socks5 节点连不上"; return r; }
+            var s = tcp.GetStream();
+            s.ReadTimeout = s.WriteTimeout = 8000;
+
+            // greet: VER NMETHODS METHODS(0x02 user/pass)
+            s.Write(new byte[] { 0x05, 0x01, 0x02 }, 0, 3);
+            int m0 = s.ReadByte(), m1 = s.ReadByte();
+            if (m0 != 0x05 || m1 < 0) { r.Ok = false; r.Error = "socks5 greet 失败"; return r; }
+            if (m1 == 0x02)
+            {
+                var ub = System.Text.Encoding.UTF8.GetBytes(user);
+                var pb = System.Text.Encoding.UTF8.GetBytes(pass);
+                if (ub.Length > 255 || pb.Length > 255)
+                { r.Ok = false; r.Error = "socks5 账密过长"; return r; }
+                var auth = new System.IO.MemoryStream();
+                auth.WriteByte(0x01);
+                auth.WriteByte((byte)ub.Length); auth.Write(ub, 0, ub.Length);
+                auth.WriteByte((byte)pb.Length); auth.Write(pb, 0, pb.Length);
+                var ab = auth.ToArray(); s.Write(ab, 0, ab.Length);
+                int a0 = s.ReadByte(), a1 = s.ReadByte();
+                if (a0 != 0x01 || a1 != 0x00)
+                { r.Ok = false; r.Error = "socks5 认证失败（账密错误或被拒）"; return r; }
+            }
+            else if (m1 != 0x00)
+            { r.Ok = false; r.Error = "socks5 不支持的认证方法 " + m1; return r; }
+
+            // CONNECT ipinfo.io:443（域名交由代理远程解析）
+            var host = System.Text.Encoding.ASCII.GetBytes("ipinfo.io");
+            var conn = new System.IO.MemoryStream();
+            conn.WriteByte(0x05); conn.WriteByte(0x01); conn.WriteByte(0x00);
+            conn.WriteByte(0x03); conn.WriteByte((byte)host.Length); conn.Write(host, 0, host.Length);
+            conn.WriteByte(0x01); conn.WriteByte(0xBB);   // 443
+            var cb = conn.ToArray(); s.Write(cb, 0, cb.Length);
+            int c0 = s.ReadByte(), c1 = s.ReadByte();
+            if (c0 != 0x05 || c1 != 0x00)
+            { r.Ok = false; r.Error = "socks5 CONNECT 被拒(上游不可用) " + c1; return r; }
+            s.ReadByte();                 // RSV
+            int atyp = s.ReadByte();     // ATYP
+            if (atyp == 1) { for (int i = 0; i < 4; i++) s.ReadByte(); }
+            else if (atyp == 3) { int l = s.ReadByte(); for (int i = 0; i < l; i++) s.ReadByte(); }
+            else if (atyp == 4) { for (int i = 0; i < 16; i++) s.ReadByte(); }
+            s.ReadByte(); s.ReadByte();  // port
+
+            // TLS（默认严格证书校验）+ HTTP GET 出网
+            using var ssl = new System.Net.Security.SslStream(s, false);
+            ssl.AuthenticateAsClient("ipinfo.io");
+            var req = System.Text.Encoding.ASCII.GetBytes(
+                "GET /json HTTP/1.1\r\nHost: ipinfo.io\r\nConnection: close\r\n\r\n");
+            ssl.Write(req, 0, req.Length); ssl.Flush();
+            var ms = new System.IO.MemoryStream();
+            var buf = new byte[4096]; int n; var deadline = DateTime.Now.AddSeconds(10);
+            while (DateTime.Now < deadline && (n = ssl.Read(buf, 0, buf.Length)) > 0)
+                ms.Write(buf, 0, n);
+            var text = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            var bodyStart = text.IndexOf("\r\n\r\n");
+            if (bodyStart < 0) { r.Ok = false; r.Error = "socks5 出网无有效响应"; return r; }
+            var body = text.Substring(bodyStart + 4);
+            // 处理 chunked
+            if (text.Contains("Transfer-Encoding: chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                var sb = new System.Text.StringBuilder(); var pos = 0;
+                while (pos < body.Length)
+                {
+                    var nl = body.IndexOf("\r\n", pos); if (nl < 0) break;
+                    var sizeHex = body.Substring(pos, nl - pos).Trim();
+                    if (!int.TryParse(sizeHex, System.Globalization.NumberStyles.HexNumber, null, out var sz) || sz == 0) break;
+                    pos = nl + 2; if (pos + sz > body.Length) break;
+                    sb.Append(body, pos, sz); pos += sz + 2;
+                }
+                body = sb.ToString();
+            }
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            r.Ip = Get(root, "ip"); r.Country = Get(root, "country");
+            r.Region = Get(root, "region"); r.City = Get(root, "city"); r.Org = Get(root, "org");
+            r.Ok = !string.IsNullOrEmpty(r.Ip);
+            if (!r.Ok) r.Error = "socks5 出网探测返回空 IP";
+            say?.Invoke($"socks5 认证+出网探测: {r.Ok} {r.Ip} {r.Country}");
+            return r;
+        }
+        catch (Exception e)
+        {
+            r.Ok = false;
+            r.Error = "socks5 认证/出网探测失败: " + (e.InnerException?.Message ?? e.Message);
+            return r;
+        }
+        finally { try { tcp?.Close(); } catch { } }
     }
 
     static string Get(JsonElement e, string k)

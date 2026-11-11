@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
+using System.Linq;
 
 namespace KZManager;
 
@@ -17,9 +19,39 @@ public static class LocalApi
 {
     static HttpListener? _listener;
     static CancellationTokenSource? _cts;
+    static string _token = "";
+
+    // P0-1: 每次启动生成随机令牌，写入 _api-token（仅本机可读），
+    // 所有请求必须带 ?token= 或 X-KZ-Token 头，否则 401。
+    static string TokenPath => System.IO.Path.Combine(Paths.Root, "_api-token");
+
+    static string EnsureToken()
+    {
+        if (_token.Length > 0) return _token;
+        try
+        {
+            if (System.IO.File.Exists(TokenPath))
+                _token = System.IO.File.ReadAllText(TokenPath).Trim();
+        }
+        catch { }
+        if (_token.Length < 16)
+        {
+            _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+            try { System.IO.File.WriteAllText(TokenPath, _token); } catch { }
+        }
+        return _token;
+    }
+
+    // P0-2: 会改变状态的端点，必须 POST
+    static readonly HashSet<string> Mutating = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/launch", "/stop", "/import", "/rotate", "/template", "/loadset",
+        "/warmup", "/screenshot", "/benchmark", "/export"
+    };
 
     public static void Start(int port = 8790)
     {
+        var tok = EnsureToken();
         _cts = new CancellationTokenSource();
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
@@ -30,6 +62,7 @@ public static class LocalApi
             return;
         }
         Console.Error.WriteLine($"LocalApi listening on 127.0.0.1:{port}");
+        Console.Error.WriteLine($"LocalApi token (also in {TokenPath}): {tok}");
         _ = Task.Run(() => Loop(_cts.Token));
     }
 
@@ -55,14 +88,43 @@ public static class LocalApi
         var req = ctx.Request;
         var res = ctx.Response;
         res.ContentType = "application/json; charset=utf-8";
-        res.AddHeader("Access-Control-Allow-Origin", "*");
+        // P0-2: 不再返回 Access-Control-Allow-Origin: *（避免任意网页跨域调用本地 API）
         object payload;
         int code = 200;
         try
         {
+            // P0-1: 令牌鉴权
+            var supplied = req.QueryString["token"] ?? req.Headers["X-KZ-Token"] ?? "";
+            if (!FixedTimeEquals(supplied, EnsureToken()))
+            {
+                res.StatusCode = 401;
+                var b = Encoding.UTF8.GetBytes("{\"ok\":false,\"error\":\"unauthorized: token required\"}");
+                res.ContentLength64 = b.Length;
+                try { res.OutputStream.Write(b, 0, b.Length); res.OutputStream.Close(); } catch { }
+                return;
+            }
+            var path0 = req.Url?.AbsolutePath ?? "/";
+            // P0-2: 状态变更端点必须 POST，GET 不能改状态
+            if (Mutating.Contains(path0) &&
+                !string.Equals(req.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                res.StatusCode = 405;
+                var b = Encoding.UTF8.GetBytes("{\"ok\":false,\"error\":\"method not allowed: use POST\"}");
+                res.ContentLength64 = b.Length;
+                try { res.OutputStream.Write(b, 0, b.Length); res.OutputStream.Close(); } catch { }
+                return;
+            }
             var path = req.Url?.AbsolutePath ?? "/";
             var q = req.QueryString;
             var name = q["name"] ?? "";
+            // P0-3: 任何带 name 的端点先校验，拒绝 ../ 绝对路径等
+            if (name.Length > 0 && PathGuard.ValidateName(name) is string nameErr)
+            {
+                code = 400;
+                payload = new { ok = false, error = "invalid name: " + nameErr };
+                Write(res, payload, code);
+                return;
+            }
             switch (path)
             {
                 case "/instances":
@@ -108,7 +170,8 @@ public static class LocalApi
                     var src = q["file"] ?? "";
                     if (string.IsNullOrEmpty(src) || !System.IO.File.Exists(src))
                     { code = 400; payload = new { ok = false, error = "missing/invalid file" }; break; }
-                    var (cnt, errs) = ProductFeatures.ImportBundle(src);
+                    var ow = string.Equals(q["overwrite"], "true", StringComparison.OrdinalIgnoreCase);
+                    var (cnt, errs) = ProductFeatures.ImportBundle(src, ow);
                     ProductFeatures.Log("import", src);
                     payload = new { ok = errs.Count == 0, count = cnt, errors = errs };
                     break;
@@ -120,8 +183,8 @@ public static class LocalApi
                 case "/warmup":   // 18 Cookie 预热
                     int wp = 8791;
                     if (int.TryParse(q["cdp"] ?? "", out var wpp)) wp = wpp;
-                    var wn = ProductFeatures.Warmup(wp).GetAwaiter().GetResult();
-                    payload = new { ok = true, queued = wn };
+                    var wr = ProductFeatures.Warmup(wp).GetAwaiter().GetResult();
+                    payload = new { ok = wr.ok, visited = wr.visited, sites = wr.sites, error = wr.error };
                     break;
                 case "/audit":    // 21 日志审计
                     var ad = System.IO.Path.Combine(Paths.Root, "_audit");
@@ -143,10 +206,10 @@ public static class LocalApi
                     var applied = !string.IsNullOrEmpty(name) && FinalFeatures.ApplyTemplate(name, tk);
                     payload = new { ok = applied, name, key = tk };
                     break;
-                case "/benchmark":  // 26 一键跑分
+                case "/benchmark":  // 26 逐项跑分检测报告
                     var cfgB = Store.LoadConfig();
-                    var br = FinalFeatures.Benchmark(cfgB.chromeExe, q["seed"] ?? "914410");
-                    payload = new { ok = br.ok, report = br.report, error = br.error };
+                    var (bok, brep, bfile, berr) = FinalFeatures.Benchmark(cfgB.chromeExe, q["seed"] ?? "914410");
+                    payload = new { ok = bok, score = brep.totalScore, passed = brep.passedCount, failed = brep.failedCount, file = bfile, failedItems = brep.failedItems, checks = brep.checks, error = berr };
                     break;
                 case "/configsets":   // 22 本地配置集
                     payload = new { ok = true, sets = FinalFeatures.ConfigSets() };
@@ -174,12 +237,25 @@ public static class LocalApi
             code = 500;
             payload = new { ok = false, error = e.Message };
         }
+        Write(res, payload, code);
+    }
+
+    static void Write(HttpListenerResponse res, object payload, int code)
+    {
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
         var buf = Encoding.UTF8.GetBytes(json);
         res.StatusCode = code;
         res.ContentLength64 = buf.Length;
         try { res.OutputStream.Write(buf, 0, buf.Length); res.OutputStream.Close(); }
         catch { }
+    }
+
+    static bool FixedTimeEquals(string a, string b)
+    {
+        if (a.Length != b.Length) return false;
+        int diff = 0;
+        for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
+        return diff == 0;
     }
 
     static string Mask(string? proxy)

@@ -1,3 +1,4 @@
+using System.Text;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -43,6 +44,7 @@ public static class FinalFeatures
     /// <summary>把模板套用到实例（只改地区相关字段，不动 proxy/seed/icon）。</summary>
     public static bool ApplyTemplate(string instanceName, string key)
     {
+        if (PathGuard.ValidateName(instanceName) is not null) return false;  // P0-3
         var t = Templates.FirstOrDefault(x => x.key == key);
         if (t is null) return false;
         var p = Path.Combine(Paths.Root, instanceName, "profile.json");
@@ -86,52 +88,225 @@ public static class FinalFeatures
         return $"--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1\" --dns-server={dns.Split(',')[0].Trim()}";
     }
 
-    // ---- 26 检测站一键跑分 ----
-    /// <summary>起临时实例跑 probe_full.html，返回解析后的 JSON 报告路径。</summary>
-    public static (bool ok, string report, string error) Benchmark(string chromeExe, string profileSeed = "914410")
+    // ---- 26 检测站逐项跑分报告 ----
+    public sealed class BenchmarkCheck
+    {
+        public string name { get; set; } = "";
+        public string expected { get; set; } = "";
+        public string actual { get; set; } = "";
+        public bool pass { get; set; }
+    }
+
+    public sealed class BenchmarkReport
+    {
+        public bool ok { get; set; }
+        public string timestamp { get; set; } = "";
+        public string seed { get; set; } = "";
+        public int totalScore { get; set; }
+        public int passedCount { get; set; }
+        public int failedCount { get; set; }
+        public List<BenchmarkCheck> checks { get; set; } = new();
+        public List<string> failedItems { get; set; } = new();
+    }
+
+    /// <summary>
+    /// P2-13: 真实逐项跑分检测。启动临时无痕浏览器加载探针，通过 WebSocket CDP
+    /// 提取真实采集值，对 Canvas、WebGL、UA、Screen、WebRTC 等做逐项判定并计算综合评分。
+    /// </summary>
+    public static (bool ok, BenchmarkReport report, string reportFile, string error) Benchmark(string chromeExe, string profileSeed = "914410")
     {
         var outDir = Path.Combine(Paths.Root, "_benchmark");
         Directory.CreateDirectory(outDir);
-        var report = Path.Combine(outDir, "report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
-        var probe = Path.Combine(Paths.Root, "probe_full.html");
-        if (!File.Exists(probe))
-        {
-            // 回退：仓库里没带探针时写一个最小自检页
-            probe = Path.Combine(outDir, "probe_min.html");
-            File.WriteAllText(probe,
-                "<!doctype html><pre id=o>running</pre><script>" +
-                "document.getElementById('o').textContent=JSON.stringify({ua:navigator.userAgent," +
-                "canvas:document.createElement('canvas').toDataURL().slice(0,40)," +
-                "cores:navigator.hardwareConcurrency,platform:navigator.platform});" +
-                "document.title='DONE'</script>");
-        }
+        var reportFile = Path.Combine(outDir, "report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
+        var probe = @"C:\\temp\\probe_full.html";
+        if (!File.Exists(probe)) probe = Path.Combine(Paths.Root, "probe_full.html");
+
+        var rep = new BenchmarkReport {
+            timestamp = DateTime.Now.ToString("o"),
+            seed = profileSeed,
+            totalScore = 100
+        };
+
         var port = 9800 + new Random().Next(100);
         var dataDir = Path.Combine(outDir, "data-" + port);
+        System.Diagnostics.Process? proc = null;
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo(chromeExe,
-                $"--user-data-dir=\"{dataDir}\" --remote-debugging-port={port} " +
-                $"--fingerprint={profileSeed} --fingerprint-platform=windows " +
-                $"--lang=en-US --no-first-run --no-default-browser-check \"file:///{probe.Replace('\\','/')}\"")
+            var psi = new System.Diagnostics.ProcessStartInfo(chromeExe)
             { UseShellExecute = false, CreateNoWindow = true };
+            psi.ArgumentList.Add("--user-data-dir=" + dataDir);
+            psi.ArgumentList.Add("--remote-debugging-port=" + port);
+            psi.ArgumentList.Add("--fingerprint=" + profileSeed);
+            psi.ArgumentList.Add("--fingerprint-platform=windows");
+            psi.ArgumentList.Add("--timezone=America/Los_Angeles");
+            psi.ArgumentList.Add("--lang=en-US");
+            psi.ArgumentList.Add("--accept-lang=en-US,en");
+            psi.ArgumentList.Add("--fp-canvas=on");
+            psi.ArgumentList.Add("--fp-webgl=intel");
+            psi.ArgumentList.Add("--fp-audio=on");
+            psi.ArgumentList.Add("--fp-dpr=2");
+            psi.ArgumentList.Add("--fp-cores=8");
+            psi.ArgumentList.Add("--fp-memory=16");
+            psi.ArgumentList.Add("--enable-unsafe-webgpu");
+            psi.ArgumentList.Add("--no-first-run");
+            psi.ArgumentList.Add("--no-default-browser-check");
+            psi.ArgumentList.Add("file:///" + probe.Replace('\\', '/'));
+
             GoogleOAuth.ApplyTo(psi);
-            using var proc = System.Diagnostics.Process.Start(psi);
-            System.Threading.Thread.Sleep(9000);
-            // 用 CDP Runtime.evaluate 取报告
-            var json = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) }
-                .GetStringAsync($"http://127.0.0.1:{port}/json/list").GetAwaiter().GetResult();
-            // 简化：把探针输出作为报告（完整 CDP 需要 websocket-client，管理器不引第三方）
-            var stub = new {
-                ok = true, at = DateTime.Now.ToString("o"), seed = profileSeed,
-                cdpTargets = json.Length,
-                note = "完整逐项跑分请用仓库 tools/ 下的 Python 探针；" +
-                       "本端点提供临时实例与 CDP 端口，供外部脚本接管。"
-            };
-            File.WriteAllText(report, JsonSerializer.Serialize(stub, new JsonSerializerOptions { WriteIndented = true }));
-            try { proc?.Kill(); } catch { }
-            return (true, report, "");
+            proc = System.Diagnostics.Process.Start(psi);
+            System.Threading.Thread.Sleep(11000);
+
+            // 连接 CDP 读取探针结果
+            using var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            var listJson = hc.GetStringAsync($"http://127.0.0.1:{port}/json/list").GetAwaiter().GetResult();
+            ProductFeatures.Log("benchmark.targets", listJson.Length > 300 ? listJson.Substring(0, 300) : listJson);
+            using var listDoc = JsonDocument.Parse(listJson);
+            string? wsUrl = null;
+            var probeUrl = "file:///" + probe.Replace('\\', '/');
+            foreach (var el in listDoc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("type", out var ty) && ty.GetString() == "page")
+                {
+                    var targetUrl = el.TryGetProperty("url", out var uProp) ? uProp.GetString() ?? "" : "";
+                    if (targetUrl.Contains("probe_full") && el.TryGetProperty("webSocketDebuggerUrl", out var wsProp))
+                    {
+                        wsUrl = wsProp.GetString();
+                        if (!string.IsNullOrEmpty(wsUrl)) break;
+                    }
+                }
+            }
+            // 若没有以 probe_full 命名的目标，挑第一个页面并导航
+            if (string.IsNullOrEmpty(wsUrl))
+            {
+                foreach (var el in listDoc.RootElement.EnumerateArray())
+                {
+                    if (el.TryGetProperty("type", out var ty) && ty.GetString() == "page" &&
+                        el.TryGetProperty("webSocketDebuggerUrl", out var wsProp))
+                    {
+                        wsUrl = wsProp.GetString();
+                        if (!string.IsNullOrEmpty(wsUrl)) break;
+                    }
+                }
+            }
+            if (string.IsNullOrEmpty(wsUrl))
+                return (false, rep, reportFile, "未获取到 CDP 调试目标");
+
+            using var ws = new System.Net.WebSockets.ClientWebSocket();
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(20));
+            ws.ConnectAsync(new Uri(wsUrl), cts.Token).GetAwaiter().GetResult();
+
+                        string rawStr = "";
+            var respBuf = new byte[65536];
+            var evalDeadline = DateTime.Now.AddSeconds(16);
+            int evalId = 10;
+            while (DateTime.Now < evalDeadline)
+            {
+                var expr = "document.getElementById('out') ? document.getElementById('out').textContent : ''";
+                var reqBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
+                    id = ++evalId,
+                    method = "Runtime.evaluate",
+                    @params = new { expression = expr, returnByValue = true }
+                }));
+                ws.SendAsync(new ArraySegment<byte>(reqBytes), System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token).GetAwaiter().GetResult();
+
+                // 每次请求只接收单条完整响应，避免多余的 ReceiveAsync 阻塞超时
+                var respMs = new MemoryStream();
+                while (true)
+                {
+                    var r = ws.ReceiveAsync(new ArraySegment<byte>(respBuf), cts.Token).GetAwaiter().GetResult();
+                    respMs.Write(respBuf, 0, r.Count);
+                    if (r.EndOfMessage) break;
+                }
+                var text = Encoding.UTF8.GetString(respMs.ToArray());
+                ProductFeatures.Log("benchmark.raw", text.Length > 200 ? text.Substring(0, 200) : text);
+
+                if (text.Contains("\"id\":" + evalId))
+                {
+                    try
+                    {
+                        using var d = JsonDocument.Parse(text);
+                        if (d.RootElement.TryGetProperty("result", out var resProp) &&
+                            resProp.TryGetProperty("result", out var res2Prop) &&
+                            res2Prop.TryGetProperty("value", out var valProp))
+                        {
+                            var v = valProp.GetString() ?? "";
+                            if (v.TrimStart().StartsWith("{"))
+                            {
+                                rawStr = v;
+                                break;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                System.Threading.Thread.Sleep(500);
+            }
+if (string.IsNullOrEmpty(rawStr))
+            {
+                return (false, rep, reportFile, "未在规定时间内获取到有效探针输出 (页面可能尚未就绪)");
+            }
+using var dataDoc = JsonDocument.Parse(rawStr);
+            var root = dataDoc.RootElement;
+
+            void AddCheck(string name, string exp, string act, bool pass, int deductOnFail = 10)
+            {
+                rep.checks.Add(new BenchmarkCheck { name = name, expected = exp, actual = act, pass = pass });
+                if (pass) rep.passedCount++;
+                else {
+                    rep.failedCount++;
+                    rep.totalScore = Math.Max(0, rep.totalScore - deductOnFail);
+                    rep.failedItems.Add($"{name} (期望: {exp}, 实际: {act})");
+                }
+            }
+
+            // 逐项判定
+            var ua = root.TryGetProperty("ua", out var u) ? u.GetString() ?? "" : "";
+            AddCheck("用户代理 (UA)", "含 Windows NT 10.0", ua.Length > 40 ? ua.Substring(0, 40) + "…" : ua, ua.Contains("Windows NT 10.0"));
+
+            var platform = root.TryGetProperty("platform", out var pl) ? pl.GetString() ?? "" : "";
+            AddCheck("平台 (navigator.platform)", "Win32", platform, platform == "Win32");
+
+            var tz = root.TryGetProperty("intl", out var inL) ? inL.GetString() ?? "" : "";
+            AddCheck("语言时区 (Intl)", "en-US", tz, tz == "en-US");
+
+            var dnt = root.TryGetProperty("dnt", out var dn) ? dn.GetString() ?? "" : "";
+            AddCheck("DoNotTrack 跟踪保护", "1", dnt, dnt == "1", 5);
+
+            if (root.TryGetProperty("canvas", out var cv))
+            {
+                var eq = cv.TryGetProperty("equal", out var eqVal) && eqVal.GetBoolean();
+                var pure = cv.TryGetProperty("pureOk", out var pVal) && pVal.GetBoolean();
+                AddCheck("Canvas 双出口一致性", "toDataURL == toBlob", eq ? "一致" : "不一致", eq);
+                AddCheck("Canvas 纯色真实性", "RGB无杂色扰动", pure ? "真实" : "异常", pure);
+            }
+
+            if (root.TryGetProperty("webgl", out var gl))
+            {
+                var v = gl.TryGetProperty("v", out var vVal) ? vVal.GetString() ?? "" : "";
+                var r = gl.TryGetProperty("r", out var rVal) ? rVal.GetString() ?? "" : "";
+                AddCheck("WebGL 规范标识", "WebKit / WebKit WebGL", $"{v} / {r}", v == "WebKit" && r == "WebKit WebGL");
+            }
+
+            if (root.TryGetProperty("webrtc", out var wr))
+            {
+                var priv = wr.TryGetProperty("priv", out var pCnt) ? pCnt.GetInt32() : -1;
+                AddCheck("WebRTC 内网泄露防护", "0 私网候选地址", $"{priv} 个私网IP", priv == 0);
+            }
+
+            rep.ok = rep.failedCount == 0;
+            File.WriteAllText(reportFile, JsonSerializer.Serialize(rep, new JsonSerializerOptions { WriteIndented = true }));
+            return (true, rep, reportFile, "");
         }
-        catch (Exception e) { return (false, report, e.Message); }
+        catch (Exception e)
+        {
+            rep.ok = false;
+            return (false, rep, reportFile, e.Message);
+        }
+        finally
+        {
+            try { proc?.Kill(); } catch { }
+            try { if (Directory.Exists(dataDir)) Directory.Delete(dataDir, true); } catch { }
+        }
     }
 
     // ---- 22 本地多配置集（不假称云同步）：列出/切换/打包 ----
@@ -145,11 +320,15 @@ public static class FinalFeatures
     }
 
     /// <summary>把一个配置集包还原为当前实例集（团队共享配置包导入）。</summary>
-    public static (int count, List<string> errors) LoadConfigSet(string name)
+    public static (int count, List<string> errors) LoadConfigSet(string name, bool overwrite = false)
     {
+        // P0-3: 配置集名必须是纯文件名，禁止 ../ 与分隔符
+        if (PathGuard.ValidateName(name) is not null)
+            return (0, new List<string> { "非法配置集名" });
         var f = Path.Combine(Paths.Root, "_exports", Path.GetFileName(name));
-        if (!File.Exists(f)) return (0, new List<string> { "配置集不存在" });
-        return ProductFeatures.ImportBundle(f);
+        if (!PathGuard.IsUnder(Paths.Root, f) || !File.Exists(f))
+            return (0, new List<string> { "配置集不存在或越界" });
+        return ProductFeatures.ImportBundle(f, overwrite);
     }
 
     // ---- 23 屏幕录制基础：headless 截图（不引第三方 WS 库）----

@@ -1,0 +1,9 @@
+# Chromium 源码版本基准配置
+# 用于锁定定制内核补丁所基于的受支持 Chromium 上游版本与提交。
+
+CHROMIUM_VERSION=158.0.8127.18
+CHROMIUM_COMMIT=6449d9f9a6a906edff724b7b220199b3fde4615c
+CHROMIUM_DATE=2026-11-03
+CHANNEL=stable
+TAG=158.0.8127.18
+NOTES=Official build configuration: is_official_build=true, symbol_level=0, proprietary_codecs=true, ffmpeg_branding=Chrome

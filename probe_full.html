@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body><pre id="out">running</pre>
+<script>
+function h(s){var x=0;for(var i=0;i<s.length;i++){x=((x<<5)-x+s.charCodeAt(i))|0;}return (x>>>0).toString(16)}
+(async function(){
+ var o={};
+ // --- 基础身份 ---
+ o.ua=navigator.userAgent; o.platform=navigator.platform;
+ o.intl=Intl.DateTimeFormat().resolvedOptions().locale;
+ o.langs=navigator.languages.join(',');
+ try{o.uadHE=await navigator.userAgentData.getHighEntropyValues(
+   ['platform','platformVersion','architecture','bitness','model','uaFullVersion'])}catch(e){o.uadHE='ERR'}
+ o.screen={w:screen.width,h:screen.height,dpr:devicePixelRatio,
+   cd:screen.colorDepth,pd:screen.pixelDepth};
+ o.hw={cores:navigator.hardwareConcurrency,mem:navigator.deviceMemory};
+ o.maxTouch=navigator.maxTouchPoints; o.dnt=navigator.doNotTrack;
+ // --- v7 新增面 ---
+ try{var c=navigator.connection;o.netinfo=c?{type:c.effectiveType,dl:c.downlink,rtt:c.rtt}:null}catch(e){o.netinfo='ERR'}
+ try{var e2=await navigator.storage.estimate();o.storage={q:e2.quota,u:e2.usage}}catch(e){o.storage='ERR'}
+ try{o.perm=(await navigator.permissions.query({name:'notifications'})).state}catch(e){o.perm='ERR'}
+ o.plugins=[...navigator.plugins].map(x=>x.name);
+ o.mimeTypes=[...navigator.mimeTypes].map(x=>x.type);
+ try{o.voices=speechSynthesis.getVoices().map(v=>v.name)}catch(e){o.voices='ERR'}
+ // --- Canvas：2出口一致 + roundtrip + 纯色真值 + per-seed ---
+ var c1=document.createElement('canvas');c1.width=200;c1.height=60;
+ var x=c1.getContext('2d');x.fillStyle='#1a2b3c';x.fillRect(0,0,200,60);
+ x.fillStyle='#ff8800';x.font='16px Arial';x.fillText('Full regression FP 12345',8,38);
+ var u1=c1.toDataURL();
+ var bl=await new Promise(function(r){c1.toBlob(function(b){var f=new FileReader();f.onload=function(){r(f.result)};f.readAsDataURL(b)},'image/png')});
+ var d=x.getImageData(0,0,200,60);
+ var c2=document.createElement('canvas');c2.width=200;c2.height=60;
+ c2.getContext('2d').putImageData(d,0,0);
+ var u2=c2.toDataURL();
+ var s=document.createElement('canvas');s.width=4;s.height=4;
+ var q=s.getContext('2d');q.fillStyle='rgb(255,0,0)';q.fillRect(0,0,4,4);
+ var sd=q.getImageData(0,0,1,1).data;
+ o.canvas={toDataURL:h(u1),toBlob:h(bl),equal:u1===bl,
+   roundtrip:h(u2),roundtripOk:u1===u2,
+   pureOk:sd[0]===255&&sd[1]===0&&sd[2]===0};
+ // --- WebGL masked/unmasked + WebGPU ---
+ try{var g=document.createElement('canvas').getContext('webgl');
+   var dbg=g.getExtension('WEBGL_debug_renderer_info');
+   o.webgl={v:g.getParameter(g.VENDOR),r:g.getParameter(g.RENDERER),
+     uv:dbg?g.getParameter(dbg.UNMASKED_VENDOR_WEBGL):'-',
+     ur:dbg?g.getParameter(dbg.UNMASKED_RENDERER_WEBGL):'-',
+     maxTex:g.getParameter(g.MAX_TEXTURE_SIZE)};
+ }catch(e){o.webgl='ERR'}
+ try{var a=await navigator.gpu.requestAdapter();o.webgpu=a?
+   {vendor:a.info.vendor,arch:a.info.architecture,maxTex:a.limits.maxTextureDimension2D}:'no adapter';
+ }catch(e){o.webgpu='ERR'}
+ // --- Audio ---
+ try{var ac=new OfflineAudioContext(1,44100,44100);var osc=ac.createOscillator();
+   osc.type='triangle';osc.frequency.value=10000;var comp=ac.createDynamicsCompressor();
+   comp.threshold.value=-50;comp.knee.value=40;comp.ratio.value=12;
+   osc.connect(comp);comp.connect(ac.destination);osc.start(0);
+   var buf=await ac.startRendering();var sum=0;
+   for(var i=4500;i<5000;i++)sum+=Math.abs(buf.getChannelData(0)[i]);
+   o.audio=h(String(sum));}catch(e){o.audio='ERR'}
+ // --- WebRTC（strict 应无私网 IP，mDNS 名按 seed 不同）---
+ o.webrtc=await new Promise(function(res){var cs=[];try{
+   var pc=new RTCPeerConnection({iceServers:[]});
+   pc.onicecandidate=function(e){if(e.candidate)cs.push(e.candidate.candidate)};
+   pc.createDataChannel('x');pc.createOffer().then(function(z){return pc.setLocalDescription(z)}).catch(function(){});
+   setTimeout(function(){try{pc.close()}catch(e){};res({n:cs.length,c:cs.slice(0,3),
+     priv:cs.filter(function(z){return /192\.168\.|10\.|172\.16\./.test(z)}).length})},2200);
+ }catch(e){res({n:-1,c:[]})}});
+ // --- Fonts ---
+ o.fontArial=document.fonts.check('12px Arial');
+ o.fontTimes=document.fonts.check('12px Times New Roman');
+ // --- Battery ---
+ try{var b=await navigator.getBattery();o.battery={charging:b.charging,level:b.level}}catch(e){o.battery='ERR'}
+ // --- Geo ---
+ try{o.geo=await new Promise(function(r){navigator.geolocation.getCurrentPosition(
+   function(p){r({lat:p.coords.latitude,lon:p.coords.longitude})},
+   function(e){r('ERR '+e.message)},{timeout:3000})})}catch(e){o.geo='ERR'}
+ document.getElementById('out').textContent=JSON.stringify(o,null,1);
+ document.title='DONE';
+})();
+</script></body></html>

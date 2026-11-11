@@ -31,6 +31,17 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 运行内核补丁首次应用与幂等测试
+        run: python kernel/test_patches.py
+
+      - name: 运行数据完整性与回滚测试
+        run: python tests/test_data_integrity.py
+
       - name: 还原依赖
         run: dotnet restore app/KZManager.csproj
 

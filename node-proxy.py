@@ -82,7 +82,10 @@ def which():
 
 # ------------------------------------------------------------------ 自动下载
 
-SINGBOX_API = "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+# P1-7: 固定自动下载的 sing-box 内核版本与 SHA-256 校验
+SINGBOX_PINNED_VERSION = "1.11.4"
+SINGBOX_PINNED_URL = "https://github.com/SagerNet/sing-box/releases/download/v1.11.4/sing-box-1.11.4-windows-amd64.zip"
+SINGBOX_PINNED_SHA256 = "8a681dbd6fa84f03d41e9e8637a8ff4df3d1d209556585ebf004b48325f9d70e"
 
 
 def ensure_core(quiet=False):
@@ -97,31 +100,29 @@ def ensure_core(quiet=False):
     if not quiet:
         print("未找到内核，尝试下载 sing-box …")
 
-    try:
-        req = urllib.request.Request(SINGBOX_API, headers={"User-Agent": "node-proxy/1.0"})
-        with urllib.request.urlopen(req, timeout=25) as r:
-            info = json.load(r)
-        tag = info["tag_name"].lstrip("v")
-        asset = None
-        for a in info.get("assets", []):
-            n = a["name"].lower()
-            if "windows-amd64" in n and n.endswith(".zip"):
-                asset = a["browser_download_url"]
-                break
-        if not asset:
-            raise RuntimeError("发布页里没有 windows-amd64 压缩包")
-    except Exception as e:
-        raise RuntimeError(
-            "自动下载失败（%s）。\n"
-            "请手动任选其一：\n"
-            "  1) 装 v2rayN / FlClash / sing-box，程序会自动探测\n"
-            "  2) 把 sing-box.exe 放到 %s" % (e, TOOLS))
+    asset = SINGBOX_PINNED_URL
+    if not quiet:
+        print("准备下载固定版本 sing-box %s (SHA-256: %s…)" % (SINGBOX_PINNED_VERSION, SINGBOX_PINNED_SHA256[:12]))
 
     zpath = os.path.join(TOOLS, "_singbox.zip")
     try:
         req = urllib.request.Request(asset, headers={"User-Agent": "node-proxy/1.0"})
+        h = hashlib.sha256()
         with urllib.request.urlopen(req, timeout=180) as r, open(zpath, "wb") as f:
-            shutil.copyfileobj(r, f)
+            while True:
+                chunk = r.read(65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+                f.write(chunk)
+        actual_sha256 = h.hexdigest().lower()
+        if actual_sha256 != SINGBOX_PINNED_SHA256.lower():
+            if os.path.exists(zpath):
+                os.remove(zpath)
+            raise RuntimeError("下载内容 SHA-256 校验失败！\n期望: %s\n实际: %s\n拒绝安装与运行！" %
+                               (SINGBOX_PINNED_SHA256, actual_sha256))
+        if not quiet:
+            print("SHA-256 校验通过: %s" % actual_sha256[:16])
         with zipfile.ZipFile(zpath) as z:
             exe = None
             for n in z.namelist():

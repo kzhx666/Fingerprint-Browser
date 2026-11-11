@@ -234,9 +234,16 @@ def patch_parse(src_root: Path, rep):
   std::string_view hostname =
       host_and_port.substr(hostname_component.begin,
                            hostname_component.len);"""
-    if PARSE_OLD not in x:
-        _rec(rep, name, "FAILED", "v7 parse block missing"); return
-    x = x.replace(PARSE_OLD, new, 1)
+    pristine_guard = ("  if (username_component.is_valid() || password_component.is_valid() ||\n"
+                      "      hostname_component.is_empty()) {\n"
+                      "    return ProxyServer();\n"
+                      "  }")
+    if PARSE_OLD in x:
+        x = x.replace(PARSE_OLD, new, 1)
+    elif pristine_guard in x:
+        x = x.replace(pristine_guard, new, 1)
+    else:
+        _rec(rep, name, "FAILED", "parse guard anchor missing"); return
     # 末尾构造：把账密传进 ProxyServer
     a = "  return ProxyServer::FromSchemeHostAndPort(scheme, hostname, port);"
     b = ("  // PATCH:v11-parse\n"
@@ -357,7 +364,7 @@ def patch_socks5_h(src_root: Path, rep):
         _rec(rep, name, "ALREADY"); return
     a = ("  SOCKS5ClientSocket(std::unique_ptr<StreamSocket> transport_socket,\n"
          "                     const HostPortPair& destination,\n"
-         "                    const NetworkTrafficAnnotationTag& traffic_annotation);")
+         "                     const NetworkTrafficAnnotationTag& traffic_annotation);")
     b = (a.replace("traffic_annotation);",
                    "traffic_annotation,\n"
                    "                      std::string username = \"\",\n"

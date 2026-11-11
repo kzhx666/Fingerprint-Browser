@@ -215,7 +215,7 @@ dotnet publish -c Release -r win-x64 --self-contained true `
 ```
 .
 ├── kernel/                    Chromium 内核补丁脚本
-│   ├── apply_patches.py       31 个补丁，一键打上
+│   ├── apply_patches.py       91 个定制补丁，一键打上 (幂等校验)
 │   ├── verify_build.py        编译产物校验
 │   └── test_patches.py        补丁自测
 ├── 使用指南.md                 给新手的完整流程

@@ -23,8 +23,48 @@ import shutil
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.environ.get("KZ_ROOT") or os.path.dirname(os.path.abspath(__file__))
 BACKUP_ROOT = os.path.join(ROOT, "_backup")
+
+RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+}
+
+def validate_name(name, desc="名称"):
+    if not name or not str(name).strip():
+        sys.exit("%s不能为空" % desc)
+    name = str(name).strip()
+    if len(name) > 120:
+        sys.exit("%s过长（最大 120 字符）" % desc)
+    for c in name:
+        if ord(c) < 32:
+            sys.exit("%s包含非法控制字符" % desc)
+    if any(c in name for c in ('/', '\\', ':')):
+        sys.exit("%s不能包含路径分隔符或冒号" % desc)
+    if ".." in name:
+        sys.exit("%s不能包含 .." % desc)
+    if os.path.isabs(name):
+        sys.exit("%s不能是绝对路径" % desc)
+    stem = name.split('.')[0].strip().upper()
+    if stem in RESERVED_NAMES:
+        sys.exit("%s是 Windows 系统保留名称（如 CON, NUL 等）" % desc)
+    if name != name.rstrip(" ."):
+        sys.exit("%s不能以空格或点结尾" % desc)
+    invalid_chars = set('<>"/\\|?*:\0')
+    if any(c in invalid_chars for c in name):
+        sys.exit("%s包含非法字符" % desc)
+    return name
+
+def is_under(root, path):
+    try:
+        r = os.path.abspath(root).rstrip(os.sep) + os.sep
+        p = os.path.abspath(path)
+        return p.startswith(r) or p == os.path.abspath(root)
+    except Exception:
+        return False
+
 
 # 书签相关（加密副本必须一起备，否则还原不完整）
 BM_FILES = ["Bookmarks", "Bookmarks.bak",
@@ -47,7 +87,11 @@ WHAT_DIRS = {"extensions": ["Extensions"]}
 
 
 def instance_dir(name):
-    return os.path.join(ROOT, name)
+    validate_name(name, "实例名")
+    p = os.path.join(ROOT, name)
+    if not is_under(ROOT, p):
+        sys.exit("实例目录越界: %s" % p)
+    return p
 
 
 def profile_dir(name):
@@ -115,7 +159,7 @@ def cmd_save(a):
     if not os.path.isdir(prof):
         sys.exit("数据目录不存在: %s" % prof)
 
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S") + ("-%03d" % int((time.time() % 1) * 1000))
     # 管理器「一键备份」多实例共用同一批次：--tag "batch=标签-时间戳"
     if (a.tag or "").startswith("batch="):
         batch = a.tag[len("batch="):]
@@ -283,7 +327,7 @@ def cmd_restore(a):
     want = {w.strip() for w in a.what.split(",") if w.strip()}
 
     # 先给当前状态留一份
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y%m%d-%H%M%S") + ("-%03d" % int((time.time() % 1) * 1000))
     safe = os.path.join(BACKUP_ROOT, "before-restore-%s" % stamp, inst)
     os.makedirs(safe, exist_ok=True)
     for name in BM_FILES + DATA_FILES:

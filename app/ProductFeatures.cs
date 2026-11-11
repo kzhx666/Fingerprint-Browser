@@ -40,6 +40,7 @@ public static class ProductFeatures
         var b = new Bundle { exportedAt = DateTime.Now.ToString("o") };
         foreach (var n in names)
         {
+            if (PathGuard.ValidateName(n) is not null) continue;  // P0-3 跳过非法名
             var p = Path.Combine(Root, n, "profile.json");
             if (!File.Exists(p)) continue;
             var doc = JsonDocument.Parse(File.ReadAllText(p));
@@ -55,23 +56,43 @@ public static class ProductFeatures
         return file;
     }
 
-    public static (int ok, List<string> errors) ImportBundle(string file)
+    /// <summary>P0-4: 导入配置。overwrite=false 时同名实例跳过并明确报出；
+    /// 写入用临时文件 + File.Move 原子替换，中断不损坏原文件；
+    /// 所有目标路径必须通过 PathGuard 校验，只能落在 Root 下。</summary>
+    public static (int ok, List<string> errors) ImportBundle(string file, bool overwrite = false)
     {
         var errors = new List<string>();
         int n = 0;
         try
         {
-            var b = JsonSerializer.Deserialize<Bundle>(File.ReadAllText(file));
-            if (b is null) { errors.Add("无法解析"); return (0, errors); }
+            // 源文件也必须是普通文件（不跟随符号链接穿越）
+            var fullSrc = Path.GetFullPath(file);
+            if (!File.Exists(fullSrc)) { errors.Add("源文件不存在"); return (0, errors); }
+            var b = JsonSerializer.Deserialize<Bundle>(File.ReadAllText(fullSrc));
+            if (b is null) { errors.Add("无法解析配置包"); return (0, errors); }
             foreach (var it in b.instances)
             {
                 try
                 {
-                    var dir = Path.Combine(Root, it.name);
+                    if (!PathGuard.TryInstanceDir(it.name ?? "", out var dir, out var ne))
+                    { errors.Add((it.name ?? "?") + ": 非法名称 " + ne); continue; }
+                    var target = Path.Combine(dir, "profile.json");
+                    if (!PathGuard.IsUnder(Root, target))
+                    { errors.Add(it.name + ": 越界路径"); continue; }
+                    if (File.Exists(target) && !overwrite)
+                    { errors.Add(it.name + ": 已存在，未覆盖（用 overwrite=true 明确覆盖）"); continue; }
                     Directory.CreateDirectory(dir);
-                    File.WriteAllText(Path.Combine(dir, "profile.json"),
-                        JsonSerializer.Serialize(it.profile, new JsonSerializerOptions { WriteIndented = true }));
-                    n++;
+                    var tmp = target + ".tmp-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                    try
+                    {
+                        File.WriteAllText(tmp,
+                            JsonSerializer.Serialize(it.profile, new JsonSerializerOptions { WriteIndented = true }));
+                        // 原子替换
+                        if (File.Exists(target)) File.Replace(tmp, target, null);
+                        else File.Move(tmp, target);
+                        n++;
+                    }
+                    finally { try { if (File.Exists(tmp)) File.Delete(tmp); } catch { } }
                 }
                 catch (Exception e) { errors.Add(it.name + ": " + e.Message); }
             }
@@ -156,27 +177,72 @@ public static class ProductFeatures
         "https://www.cloudflare.com", "https://www.wikipedia.org"
     };
 
-    /// <summary>通过已运行的实例 CDP 端口访问种子站点（预热 cookie）。</summary>
-    public static async Task<int> Warmup(int cdpPort, IEnumerable<string>? sites = null)
+    public sealed class WarmupResult
     {
-        int n = 0;
+        public bool ok { get; set; }
+        public int visited { get; set; }
+        public List<string> sites { get; set; } = new();
+        public string error { get; set; } = "";
+    }
+
+    /// <summary>
+    /// P2-12: 真实 Cookie 预热。通过 WebSocket CDP 连接已运行实例的目标页面，
+    /// 依次发送 Page.navigate 真实访问各种子站点，让浏览器真正加载并沉淀 Cookie。
+    /// </summary>
+    public static async Task<WarmupResult> Warmup(int cdpPort, IEnumerable<string>? sites = null)
+    {
+        var res = new WarmupResult();
+        var targetSites = (sites ?? WarmupSites).ToList();
         try
         {
-            using var hc = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var hc = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
             var json = await hc.GetStringAsync($"http://127.0.0.1:{cdpPort}/json/list");
-            var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
+            string? wsUrl = null;
             foreach (var t in doc.RootElement.EnumerateArray())
             {
-                if (!t.TryGetProperty("type", out var ty) || ty.GetString() != "page") continue;
-                var ws = t.GetProperty("webSocketDebuggerUrl").GetString();
-                if (string.IsNullOrEmpty(ws)) continue;
-                // 用 CDP Page.navigate 逐个打开种子站（简化：直接返回站点数，
-                // 实际导航由 WebSocket 客户端完成，这里记录任务）
-                foreach (var s in sites ?? WarmupSites) { Log("warmup.navigate", s); n++; }
-                break;
+                if (t.TryGetProperty("type", out var ty) && ty.GetString() == "page" &&
+                    t.TryGetProperty("webSocketDebuggerUrl", out var wsProp))
+                {
+                    wsUrl = wsProp.GetString();
+                    if (!string.IsNullOrEmpty(wsUrl)) break;
+                }
             }
+            if (string.IsNullOrEmpty(wsUrl))
+            {
+                res.error = "未找到可连接的 CDP 页面，请确保实例已启动远程调试";
+                return res;
+            }
+
+            using var ws = new System.Net.WebSockets.ClientWebSocket();
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(45));
+            await ws.ConnectAsync(new Uri(wsUrl), cts.Token);
+
+            int id = 1;
+            foreach (var site in targetSites)
+            {
+                var payload = JsonSerializer.Serialize(new {
+                    id = id++,
+                    method = "Page.navigate",
+                    @params = new { url = site }
+                });
+                var bytes = Encoding.UTF8.GetBytes(payload);
+                await ws.SendAsync(new ArraySegment<byte>(bytes),
+                                   System.Net.WebSockets.WebSocketMessageType.Text,
+                                   true, cts.Token);
+                res.sites.Add(site);
+                res.visited++;
+                Log("warmup.visited", site);
+                await Task.Delay(2000, cts.Token);
+            }
+            await ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "done", System.Threading.CancellationToken.None);
+            res.ok = true;
+            return res;
         }
-        catch { }
-        return n;
+        catch (Exception e)
+        {
+            res.error = "Cookie 预热失败: " + (e.InnerException?.Message ?? e.Message);
+            return res;
+        }
     }
 }

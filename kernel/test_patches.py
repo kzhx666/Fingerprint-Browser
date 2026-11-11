@@ -56,7 +56,7 @@ EXPECTATIONS = [
     ("third_party/blink/renderer/modules/battery/battery_manager.cc",
      "PATCH:battery"),
     ("third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc",
-     "PATCH:canvas-noise"),
+     "PATCH:canvas-v4"),
     ("third_party/blink/renderer/platform/graphics/image_data_buffer.h",
      "owns_pixels_"),
     ("third_party/blink/renderer/platform/graphics/image_data_buffer.cc",

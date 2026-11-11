@@ -1,0 +1,420 @@
+{
+  "timestamp": "2026-11-11 14:08:39",
+  "chrome_exe": "D:\\KZBuild\\App\\chrome.exe",
+  "results": {
+    "A": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "intl": "en-US",
+      "langs": "en-US,en",
+      "uadHE": {
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "158"
+          },
+          {
+            "brand": "Not.A/Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "158"
+          }
+        ],
+        "mobile": false,
+        "model": "",
+        "platform": "Windows",
+        "platformVersion": "10.0.0",
+        "uaFullVersion": "158.0.8127.18"
+      },
+      "screen": {
+        "w": 1920,
+        "h": 1080,
+        "dpr": 2,
+        "cd": 30,
+        "pd": 30
+      },
+      "hw": {
+        "cores": 8,
+        "mem": 16
+      },
+      "maxTouch": 5,
+      "dnt": "1",
+      "netinfo": {
+        "type": "4g",
+        "dl": 8.288,
+        "rtt": 100
+      },
+      "storage": {
+        "q": 214748364800,
+        "u": 0
+      },
+      "perm": "prompt",
+      "plugins": [
+        "PDF Viewer",
+        "Chrome PDF Viewer",
+        "Chromium PDF Viewer",
+        "Microsoft Edge PDF Viewer",
+        "WebKit built-in PDF"
+      ],
+      "mimeTypes": [
+        "application/pdf",
+        "text/pdf"
+      ],
+      "voices": [],
+      "canvas": {
+        "toDataURL": "5a53209e",
+        "toBlob": "5a53209e",
+        "equal": true,
+        "roundtrip": "5a53209e",
+        "roundtripOk": true,
+        "pureOk": true
+      },
+      "webgl": {
+        "v": "WebKit",
+        "r": "WebKit WebGL",
+        "uv": "Google Inc. (Intel)",
+        "ur": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "maxTex": 16384
+      },
+      "webgpu": {
+        "vendor": "intel",
+        "arch": "gen9",
+        "maxTex": 16384
+      },
+      "audio": "67ef3f4",
+      "webrtc": {
+        "n": 1,
+        "c": [
+          "candidate:2828027068 1 udp 2113937151 e5fba640-3bd4-4a69-a3d9-e282aaf031a3.local 17559 typ host generation 0 ufrag 7MuQ network-cost 999"
+        ],
+        "priv": 0
+      },
+      "fontArial": true,
+      "fontTimes": true,
+      "battery": {
+        "charging": true,
+        "level": 1
+      },
+      "geo": {
+        "lat": 34.0522,
+        "lon": -118.2437
+      }
+    },
+    "B": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "intl": "en-US",
+      "langs": "en-US,en",
+      "uadHE": {
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "158"
+          },
+          {
+            "brand": "Not.A/Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "158"
+          }
+        ],
+        "mobile": false,
+        "model": "",
+        "platform": "Windows",
+        "platformVersion": "10.0.0",
+        "uaFullVersion": "158.0.8127.18"
+      },
+      "screen": {
+        "w": 2560,
+        "h": 1440,
+        "dpr": 2,
+        "cd": 30,
+        "pd": 30
+      },
+      "hw": {
+        "cores": 8,
+        "mem": 16
+      },
+      "maxTouch": 2,
+      "dnt": "1",
+      "netinfo": {
+        "type": "4g",
+        "dl": 7.0280000000000005,
+        "rtt": 100
+      },
+      "storage": {
+        "q": 53687091200,
+        "u": 0
+      },
+      "perm": "prompt",
+      "plugins": [
+        "PDF Viewer",
+        "Chrome PDF Viewer",
+        "Chromium PDF Viewer",
+        "Microsoft Edge PDF Viewer",
+        "WebKit built-in PDF"
+      ],
+      "mimeTypes": [
+        "application/pdf",
+        "text/pdf"
+      ],
+      "voices": [],
+      "canvas": {
+        "toDataURL": "3fc365e",
+        "toBlob": "3fc365e",
+        "equal": true,
+        "roundtrip": "3fc365e",
+        "roundtripOk": true,
+        "pureOk": true
+      },
+      "webgl": {
+        "v": "WebKit",
+        "r": "WebKit WebGL",
+        "uv": "Google Inc. (Intel)",
+        "ur": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "maxTex": 16384
+      },
+      "webgpu": {
+        "vendor": "intel",
+        "arch": "gen9",
+        "maxTex": 16384
+      },
+      "audio": "fba46278",
+      "webrtc": {
+        "n": 1,
+        "c": [
+          "candidate:267859791 1 udp 2113937151 ea174004-7d3a-445e-9e3f-e3df33741711.local 21424 typ host generation 0 ufrag EAxX network-cost 999"
+        ],
+        "priv": 0
+      },
+      "fontArial": true,
+      "fontTimes": true,
+      "battery": {
+        "charging": true,
+        "level": 1
+      },
+      "geo": {
+        "lat": 34.0522,
+        "lon": -118.2437
+      }
+    },
+    "C": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "intl": "en-US",
+      "langs": "en-US,en",
+      "uadHE": {
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "158"
+          },
+          {
+            "brand": "Not.A/Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "158"
+          }
+        ],
+        "mobile": false,
+        "model": "",
+        "platform": "Windows",
+        "platformVersion": "10.0.0",
+        "uaFullVersion": "158.0.8127.18"
+      },
+      "screen": {
+        "w": 2560,
+        "h": 1440,
+        "dpr": 2,
+        "cd": 24,
+        "pd": 24
+      },
+      "hw": {
+        "cores": 8,
+        "mem": 16
+      },
+      "maxTouch": 4,
+      "dnt": "1",
+      "netinfo": {
+        "type": "4g",
+        "dl": 8.372,
+        "rtt": 100
+      },
+      "storage": {
+        "q": 107374182400,
+        "u": 0
+      },
+      "perm": "prompt",
+      "plugins": [
+        "PDF Viewer",
+        "Chrome PDF Viewer",
+        "Chromium PDF Viewer",
+        "Microsoft Edge PDF Viewer",
+        "WebKit built-in PDF"
+      ],
+      "mimeTypes": [
+        "application/pdf",
+        "text/pdf"
+      ],
+      "voices": [],
+      "canvas": {
+        "toDataURL": "a3df4a4d",
+        "toBlob": "a3df4a4d",
+        "equal": true,
+        "roundtrip": "a3df4a4d",
+        "roundtripOk": true,
+        "pureOk": true
+      },
+      "webgl": {
+        "v": "WebKit",
+        "r": "WebKit WebGL",
+        "uv": "Google Inc. (Intel)",
+        "ur": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "maxTex": 16384
+      },
+      "webgpu": {
+        "vendor": "intel",
+        "arch": "gen9",
+        "maxTex": 16384
+      },
+      "audio": "3ff6fb95",
+      "webrtc": {
+        "n": 1,
+        "c": [
+          "candidate:1717139830 1 udp 2113937151 f60fc37e-8444-4924-b4da-df52a87f1957.local 23546 typ host generation 0 ufrag vSia network-cost 999"
+        ],
+        "priv": 0
+      },
+      "fontArial": true,
+      "fontTimes": true,
+      "battery": {
+        "charging": true,
+        "level": 1
+      },
+      "geo": {
+        "lat": 34.0522,
+        "lon": -118.2437
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "UA 含 Windows NT 10.0",
+      "pass": true,
+      "detail": "Mozilla/5.0 (Windows NT 10.0; Win64; x64"
+    },
+    {
+      "name": "navigator.platform == Win32",
+      "pass": true,
+      "detail": "Win32"
+    },
+    {
+      "name": "Intl.locale == en-US",
+      "pass": true,
+      "detail": "en-US"
+    },
+    {
+      "name": "languages == en-US,en",
+      "pass": true,
+      "detail": "en-US,en"
+    },
+    {
+      "name": "UA-CH platform == Windows",
+      "pass": true,
+      "detail": "Windows"
+    },
+    {
+      "name": "UA-CH platformVersion == 10.0.0",
+      "pass": true,
+      "detail": "10.0.0"
+    },
+    {
+      "name": "Canvas toDataURL == toBlob",
+      "pass": true,
+      "detail": "5a53209e == 5a53209e"
+    },
+    {
+      "name": "Canvas roundtrip 一致",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "Canvas 纯色真值",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "WebGL masked VENDOR == WebKit",
+      "pass": true,
+      "detail": "WebKit"
+    },
+    {
+      "name": "WebGL masked RENDERER == WebKit WebGL",
+      "pass": true,
+      "detail": "WebKit WebGL"
+    },
+    {
+      "name": "WebGL unmasked 是 Intel",
+      "pass": true,
+      "detail": "ANGLE (Intel, Intel(R) UHD Graphics 630 Direc"
+    },
+    {
+      "name": "WebRTC strict 无私网 IP 泄漏",
+      "pass": true,
+      "detail": "priv=0 n=1"
+    },
+    {
+      "name": "doNotTrack == 1",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "colorDepth 合法 (24/30)",
+      "pass": true,
+      "detail": "30"
+    },
+    {
+      "name": "DPR == 2",
+      "pass": true,
+      "detail": "2"
+    },
+    {
+      "name": "canvas 跨实例 3 Seed 独立性",
+      "pass": true,
+      "detail": "3/3 唯一"
+    },
+    {
+      "name": "netinfo 跨实例 3 Seed 独立性",
+      "pass": true,
+      "detail": "3/3 唯一"
+    },
+    {
+      "name": "storage 跨实例 3 Seed 独立性",
+      "pass": true,
+      "detail": "3/3 唯一"
+    },
+    {
+      "name": "webrtc 跨实例 3 Seed 独立性",
+      "pass": true,
+      "detail": "3/3 唯一"
+    },
+    {
+      "name": "audio 跨实例 3 Seed 独立性",
+      "pass": true,
+      "detail": "3/3 唯一"
+    }
+  ],
+  "passed": true
+}

@@ -24,7 +24,6 @@ public static class HealthScore
     public sealed class Report
     {
         public List<Item> Items = new();
-        public int KernelScore;
         public string KernelNote = "";
         public double Average => Items.Count == 0 ? 0 : Items.Average(x => x.Score);
     }
@@ -33,7 +32,6 @@ public static class HealthScore
     {
         var rep = new Report();
         var k = KernelSelfCheck.Check(cfg.chromeExe);
-        rep.KernelScore = k.Ok ? 100 : Math.Max(0, 100 - k.Missing.Count * 8);
         rep.KernelNote = k.Note;
         var exits = ProxyPrecheck.LoadAll();
 

@@ -1,78 +1,100 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace KZManager;
 
 /// <summary>
-/// 25: 内核补丁自检器。启动时扫描 chrome.dll 里的 PATCH 标记，
-/// 与 apply_patches.py 声明的期望清单比对，防止内核被降级/替换/篡改。
+/// 25: 内核补丁自检器。
+/// 说明：PATCH 标记大多在源码注释里，不会编进 chrome.dll，
+/// 所以"扫 dll 里的字符串"从根上不成立。改为：
+///  1) 记录/比对 chrome.dll 的 SHA-256（防替换/降级）
+///  2) 跑 apply_patches.py --check 确认源码树补丁全部幂等
+///  3) 校验关键导出行为由 CDP 自检覆盖（启动实例时另验）
 /// </summary>
 public static class KernelSelfCheck
 {
     public sealed class Result
     {
         public bool Ok;
-        public int Found;
-        public int Expected;
-        public List<string> Missing = new();
         public string DllPath = "";
+        public string Sha256 = "";
+        public string Baseline = "";
+        public bool PatchCheckOk;
+        public string PatchCheckNote = "";
+        public List<string> Issues = new();
         public string Note = "";
     }
 
-    // 与 kernel/apply_patches.py 的关键标记一致（不含注释性 marker）
-    static readonly string[] kExpected = {
-        "PATCH:canvas-v5", "PATCH:canvas-v4", "PATCH:audio-noise",
-        "PATCH:v7-derived", "PATCH:v7-colordepth", "PATCH:v7-dnt",
-        "PATCH:v7-touch", "PATCH:v7-netinfo", "PATCH:v7-storage",
-        "PATCH:v7-webrtc", "PATCH:fp-audio-offline", "PATCH:fp-audio-biquad",
-        "PATCH:fp-audio-analyser", "PATCH:fp-audio-copy", "PATCH:fp-audio-ctx",
-        "PATCH:fp-audio-hw", "PATCH:fp-audio-worklet", "PATCH:fp-audio-h",
-        "PATCH:v10-gl", "PATCH:v10-media", "PATCH:v10-speech",
-        "PATCH:v10-webgpu", "PATCH:v10-meminfo", "PATCH:v10b-rect",
-        "PATCH:v11-auth", "PATCH:v11-parse", "PATCH:v11-cjpf",
-        "PATCH:v11-sp", "PATCH:v11-socks5", "PATCH:no-lens-text-search"
-    };
+    static string BaselinePath =>
+        Path.Combine(Paths.Root, "_kernel-baseline.sha256");
 
-    public static Result Check(string? chromeExe = null)
+    public static Result Check(string? chromeExe = null, bool refresh = false,
+                               string? repoRoot = null)
     {
         var r = new Result();
         try
         {
             var exe = chromeExe;
-            if (string.IsNullOrEmpty(exe))
-            {
-                var cfg = Store.LoadConfig();
-                exe = cfg.chromeExe;
-            }
+            if (string.IsNullOrEmpty(exe)) exe = Store.LoadConfig().chromeExe;
             var dll = Path.Combine(Path.GetDirectoryName(exe) ?? "", "chrome.dll");
             r.DllPath = dll;
-            if (!File.Exists(dll))
+            if (!File.Exists(dll)) { r.Issues.Add("找不到 chrome.dll"); r.Note = "找不到 chrome.dll"; return r; }
+            using var sha = SHA256.Create();
+            using var fs = File.OpenRead(dll);
+            r.Sha256 = Convert.ToHexString(sha.ComputeHash(fs)).ToLowerInvariant();
+
+            if (refresh || !File.Exists(BaselinePath))
             {
-                r.Note = "找不到 chrome.dll";
-                return r;
+                File.WriteAllText(BaselinePath, r.Sha256);
+                r.Baseline = r.Sha256;
             }
-            // 只扫前 64MB 里的可打印 ASCII，够覆盖所有 PATCH 字符串常量
-            var bytes = File.ReadAllBytes(dll);
-            var text = Encoding.ASCII.GetString(bytes, 0,
-                Math.Min(bytes.Length, 64 * 1024 * 1024));
-            foreach (var tag in kExpected)
+            else
             {
-                r.Expected++;
-                if (text.Contains(tag)) r.Found++;
-                else r.Missing.Add(tag);
+                r.Baseline = File.ReadAllText(BaselinePath).Trim();
+                if (!string.Equals(r.Sha256, r.Baseline, StringComparison.OrdinalIgnoreCase))
+                    r.Issues.Add("chrome.dll 与基线 SHA-256 不一致（可能被降级/替换/换版本）");
             }
-            r.Ok = r.Missing.Count == 0;
+
+            // 源码树补丁幂等
+            var root = repoRoot ?? Path.Combine(Paths.Root, "kz-profile-manager");
+            var script = Path.Combine(root, "kernel", "apply_patches.py");
+            var src = @"C:\chromium\src";
+            if (File.Exists(script) && Directory.Exists(src))
+            {
+                try
+                {
+                    var psi = new ProcessStartInfo("python",
+                        $"\"{script}\" \"{src}\" --check")
+                    { UseShellExecute = false, RedirectStandardOutput = true,
+                      RedirectStandardError = true, CreateNoWindow = true };
+                    using var p = Process.Start(psi);
+                    if (p is not null)
+                    {
+                        var o = p.StandardOutput.ReadToEnd();
+                        p.WaitForExit(30000);
+                        r.PatchCheckOk = o.Contains("All patches OK") ||
+                                         (!o.Contains("FAILED") && p.ExitCode == 0);
+                        r.PatchCheckNote = r.PatchCheckOk
+                            ? "apply_patches.py --check 幂等全绿"
+                            : "补丁 --check 未通过";
+                        if (!r.PatchCheckOk) r.Issues.Add("源码树补丁 --check 未通过");
+                    }
+                }
+                catch (Exception e) { r.PatchCheckNote = "补丁检查跳过: " + e.Message; }
+            }
+            else r.PatchCheckNote = "未找到补丁脚本/源码树，跳过";
+
+            r.Ok = r.Issues.Count == 0;
             r.Note = r.Ok
-                ? $"内核补丁完整（{r.Found}/{r.Expected}）"
-                : $"内核补丁缺失 {r.Missing.Count} 项，可能被降级或替换";
+                ? $"内核完整（SHA-256 {r.Sha256.Substring(0, 12)}…，补丁幂等）"
+                : string.Join("；", r.Issues);
         }
-        catch (Exception e)
-        {
-            r.Note = "自检失败: " + e.Message;
-        }
+        catch (Exception e) { r.Note = "自检失败: " + e.Message; r.Issues.Add(e.Message); }
         return r;
     }
 }

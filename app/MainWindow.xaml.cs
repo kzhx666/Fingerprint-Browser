@@ -639,7 +639,7 @@ public partial class MainWindow : Window
     {
         var r = HealthScore.Evaluate(_cfg);
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"内核补丁: {r.KernelScore} 分  {r.KernelNote}");
+        sb.AppendLine($"内核: {r.KernelNote}");
         sb.AppendLine($"实例平均: {r.Average:F0} 分（{r.Items.Count} 个实例）");
         sb.AppendLine();
         foreach (var it in r.Items.OrderBy(x => x.Score))
@@ -663,9 +663,9 @@ public partial class MainWindow : Window
         }
         else
         {
-            MessageBox.Show($"✗ {r.Note}\n\n缺失标记:\n  " +
-                            string.Join("\n  ", r.Missing) +
-                            $"\n\n{r.DllPath}",
+            MessageBox.Show($"✗ {r.Note}\n\n" +
+                            string.Join("\n", r.Issues) +
+                            $"\n\n{r.DllPath}\nSHA-256: {r.Sha256}\n{r.PatchCheckNote}",
                             "内核补丁自检", MessageBoxButton.OK,
                             MessageBoxImage.Warning);
         }

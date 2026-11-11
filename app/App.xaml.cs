@@ -53,7 +53,17 @@ public partial class App : Application
 
         // ---- 命令行模式：--launch "实例名" ----
         // 给任务栏快捷方式用，走和管理器「启动」完全一样的流程。
+        // 15: --api [port] 本地自动化接口（不弹主窗口）
         var argv = e.Args;
+        int apiIdx = Array.IndexOf(argv, "--api");
+        if (apiIdx >= 0)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            int port = 8790;
+            if (apiIdx + 1 < argv.Length && int.TryParse(argv[apiIdx + 1], out var p)) port = p;
+            LocalApi.Start(port);
+            return;   // 不创建 MainWindow
+        }
         int idx = Array.IndexOf(argv, "--launch");
         if (idx >= 0)
         {

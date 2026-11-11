@@ -115,4 +115,10 @@ public sealed class AppConfig
     public bool regionCheckBlock { get; set; } = false;
     /// <summary>使用内核原生 socks5 账密认证（v11），false = 回退 Python 转发器。</summary>
     public bool nativeProxyAuth { get; set; } = true;
+    /// <summary>21 审计 Webhook URL（空=不发）。</summary>
+    public string webhookUrl { get; set; } = "";
+    /// <summary>16 代理自动轮换（默认关）。</summary>
+    public bool proxyRotation { get; set; } = false;
+    /// <summary>19/20 UA 画像（default/chrome-157/iOS-safari/Android-chrome）。</summary>
+    public string uaProfile { get; set; } = "default";
 }

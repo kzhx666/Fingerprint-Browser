@@ -67,7 +67,6 @@ public static class ProxyPrecheck
                 }
                 r.Ok = true;
                 r.Error = "原生 socks5（不经 HTTP 探测）";
-                r.ProxyUsed = r.ProxyUsed;
                 return r;
             }
             catch (Exception e)

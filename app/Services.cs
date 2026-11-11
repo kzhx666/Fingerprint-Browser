@@ -354,6 +354,11 @@ public static class Fingerprint
             //     这里再禁本地 UDP 收集作双保险，防止 pref 被覆盖时露网卡。
             a.Add("--webrtc-ip-handling-policy=disable_non_proxied_udp");
 
+            // (2.1) 封死 WebRTC STUN 探测泄漏本地真实公网 IP:
+            // 绝大多数指纹检测站 (如 ipcheck.ing, yalala, browserleaks) 通过公共 STUN 服务器探测真实 IP。
+            // 当配置代理时，禁止解析任何公共 STUN/TURN 探测服务器，杜绝直连 UDP 握手包暴露本机真实 IP。
+            a.Add("--host-resolver-rules=\"MAP *stun* ~NOTFOUND, MAP *turn* ~NOTFOUND, MAP *twilio* ~NOTFOUND, MAP *blackberry* ~NOTFOUND\"");
+
             // (3) 全域国内通配分流 (Comprehensive China Direct Bypass):
             // 采用顶级通配规则彻底覆盖所有国内互联网体系 (B站全系/阿里系/腾讯系/百度系/字节系/京东/网易/美团/快手/政企银行及所有.cn域名)
             // 杜绝海外 SOCKS5 代理出向 ACL 规则拦截国内站点 (0x02)，同时保证国外业务平台 100% 走代理。

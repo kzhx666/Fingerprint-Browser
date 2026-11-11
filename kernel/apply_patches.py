@@ -3713,6 +3713,11 @@ def patch_v7_socks5_auth(src_root: Path, rep: Report):
     cc = src_root / "net/socket/socks5_client_socket.cc"
     if not (h.exists() and cc.exists()):
         rep.record(name, "FAILED", "socks5 files missing"); return
+    # v11 supersedes this marker-only patch; never re-add members.
+    h11 = src_root / "net/socket/socks5_client_socket.h"
+    if h11.exists() and "PATCH:v11-socks5" in read_file(h11):
+        rep.record("v7 native socks5 auth (handshake)", "ALREADY")
+        return
     try:
         ht = read_file(h)
         if "PATCH:v7-socks5" not in ht:
@@ -4463,6 +4468,7 @@ import sys as _sys
 import os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import patches_v11
+import patches_v12
 
 ALL_PATCHES = [
     patch_fingerprint_helper,
@@ -4501,7 +4507,7 @@ ALL_PATCHES = [
     patch_canvas_v5b,
     patch_no_lens_text_search,
     patch_v7_derived,
-] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A + ALL_V10_B + patches_v11.ALL_V11
+] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A + ALL_V10_B + patches_v11.ALL_V11 + patches_v12.ALL_V12
 
 
 

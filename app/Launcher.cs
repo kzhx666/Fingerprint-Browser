@@ -88,9 +88,11 @@ public static class Launcher
         }
 
         // ---- 3. 节点代理 ----
-        // Chromium 的 --proxy-server 不支持 URI 里嵌 socks5 账号密码
-        // (ERR_NO_SUPPORTED_PROXIES)。带认证时先起本地转发器，改成本地 http://。
-        if (ProxyRelay.NeedsRelay(p.proxy))
+        // v11 起内核已原生支持 --proxy-server=socks5://user:pass@host:port
+        // （改 mojom + ProxyServer 结构体 + SOCKS5 状态机实测通过）。
+        // 默认直接用原串，不再起 Python 转发器；nativeProxyAuth=false 时
+        // 回退到已验证的 v2 本地转发链路，便于降级排障。
+        if (!cfg.nativeProxyAuth && ProxyRelay.NeedsRelay(p.proxy))
         {
             var relayed = ProxyRelay.Ensure(p.proxy, name, Say);
             if (relayed is null)

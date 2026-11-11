@@ -49,6 +49,33 @@ public static class ProxyPrecheck
         r.ProxyUsed = m.Groups[1].Value.Trim('"');
         say?.Invoke($"预检出口 IP（经 {r.ProxyUsed}）…");
 
+        // v11: --proxy-server=socks5://user:pass@host:port 是内核原生链路，
+        // WebProxy 不认识该 scheme，HTTP 探测会误判为代理挂掉。此时只做
+        // TCP 连通性检查，出口国家留空（地区比对会跳过，不误拦启动）。
+        if (r.ProxyUsed.StartsWith("socks5://", StringComparison.OrdinalIgnoreCase)
+            && r.ProxyUsed.Contains("@"))
+        {
+            try
+            {
+                var u = new Uri(r.ProxyUsed);
+                using var tcp = new System.Net.Sockets.TcpClient();
+                var task = tcp.ConnectAsync(u.Host, u.Port);
+                if (!task.Wait(TimeSpan.FromSeconds(6)) || !tcp.Connected)
+                {
+                    r.Ok = false; r.Error = "原生 socks5 节点连不上";
+                    return r;
+                }
+                r.Ok = true;
+                r.Error = "原生 socks5（不经 HTTP 探测）";
+                r.ProxyUsed = r.ProxyUsed;
+                return r;
+            }
+            catch (Exception e)
+            {
+                r.Ok = false; r.Error = e.Message; return r;
+            }
+        }
+
         try
         {
             var handler = new HttpClientHandler

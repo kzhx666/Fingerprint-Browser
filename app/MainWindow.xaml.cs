@@ -633,6 +633,45 @@ public partial class MainWindow : Window
             ? "地区不符将拦截启动" : "地区不符只警告，不拦截");
     }
 
+    // ---------------------------------------------------------------- 健康评分
+
+    void MenuHealthScore_Click(object sender, RoutedEventArgs e)
+    {
+        var r = HealthScore.Evaluate(_cfg);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"内核补丁: {r.KernelScore} 分  {r.KernelNote}");
+        sb.AppendLine($"实例平均: {r.Average:F0} 分（{r.Items.Count} 个实例）");
+        sb.AppendLine();
+        foreach (var it in r.Items.OrderBy(x => x.Score))
+            sb.AppendLine($"{it.Score,3}  {it.Name}  {it.Summary}");
+        MessageBox.Show(sb.ToString(), "实例健康评分",
+                        MessageBoxButton.OK,
+                        r.Average >= 85 ? MessageBoxImage.Information
+                                        : MessageBoxImage.Warning);
+        SetStatus($"健康评分：平均 {r.Average:F0} 分");
+    }
+
+    // ---------------------------------------------------------------- 内核补丁自检
+
+    void MenuKernelCheck_Click(object sender, RoutedEventArgs e)
+    {
+        var r = KernelSelfCheck.Check(_cfg.chromeExe);
+        if (r.Ok)
+        {
+            MessageBox.Show($"✓ {r.Note}\n\n{r.DllPath}", "内核补丁自检",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            MessageBox.Show($"✗ {r.Note}\n\n缺失标记:\n  " +
+                            string.Join("\n  ", r.Missing) +
+                            $"\n\n{r.DllPath}",
+                            "内核补丁自检", MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+        }
+        SetStatus(r.Note);
+    }
+
     // ---------------------------------------------------------------- 出口预检开关
 
     void MenuProxyPrecheck_Click(object sender, RoutedEventArgs e)

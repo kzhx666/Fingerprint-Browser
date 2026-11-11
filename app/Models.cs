@@ -113,4 +113,6 @@ public sealed class AppConfig
     public bool regionCheck { get; set; } = true;
     /// <summary>地区不符时拦截启动（false = 只警告）。</summary>
     public bool regionCheckBlock { get; set; } = false;
+    /// <summary>使用内核原生 socks5 账密认证（v11），false = 回退 Python 转发器。</summary>
+    public bool nativeProxyAuth { get; set; } = true;
 }

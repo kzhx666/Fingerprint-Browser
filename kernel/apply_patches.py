@@ -3655,6 +3655,11 @@ def patch_v7_webrtc_instance(src_root: Path, rep: Report):
 def patch_v7_proxy_auth(src_root: Path, rep: Report):
     """A: accept user:pass@host:port in --proxy-server and pass it through."""
     name = "v7 native socks5 auth (parse)"
+    # v11 supersedes this parse-only patch with the full native auth chain.
+    p11 = src_root / "net/base/proxy_string_util.cc"
+    if p11.exists() and "PATCH:v11-parse" in read_file(p11):
+        rep.record(name, "ALREADY")
+        return
     p = src_root / "net/base/proxy_string_util.cc"
     if not p.exists():
         rep.record(name, "FAILED", "proxy_string_util.cc missing"); return
@@ -4453,6 +4458,11 @@ ALL_V10_B = [
     patch_v10b_gamepad, patch_v10b_intl, patch_v10b_math,
 ]
 
+# PATCH:v11-import - load sibling module regardless of cwd
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+import patches_v11
 
 ALL_PATCHES = [
     patch_fingerprint_helper,
@@ -4491,7 +4501,7 @@ ALL_PATCHES = [
     patch_canvas_v5b,
     patch_no_lens_text_search,
     patch_v7_derived,
-] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A + ALL_V10_B
+] + ALL_V7 + ALL_FP_AUDIO + ALL_V10_A + ALL_V10_B + patches_v11.ALL_V11
 
 
 

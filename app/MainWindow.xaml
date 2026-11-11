@@ -282,6 +282,8 @@
                                 <MenuItem Header="查看当前默认落到哪个实例" Click="MenuSmartDefaultStatus_Click"/>
                                 <MenuItem Header="重刷所有快捷方式图标" Click="MenuRefreshIcons_Click"/>
                                 <MenuItem Header="指纹一致性检查…" Click="MenuConsistency_Click"/>
+                                <MenuItem Header="内核补丁完整性自检" Click="MenuKernelCheck_Click"/>
+                                <MenuItem Header="实例健康评分" Click="MenuHealthScore_Click"/>
                                 <MenuItem Header="节点库管理" Click="MenuNodes_Click"/>
                                 <Separator/>
                                 <MenuItem Header="任务栏：每个窗口单独显示…" Click="MenuTaskbar_Click"/>

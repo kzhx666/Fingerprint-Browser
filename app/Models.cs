@@ -121,4 +121,6 @@ public sealed class AppConfig
     public bool proxyRotation { get; set; } = false;
     /// <summary>19/20 UA 画像（default/chrome-157/iOS-safari/Android-chrome）。</summary>
     public string uaProfile { get; set; } = "default";
+    /// <summary>28 实例级 DNS（按声明地区，默认关）。</summary>
+    public bool perInstanceDns { get; set; } = false;
 }

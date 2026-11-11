@@ -372,6 +372,9 @@ public static class Fingerprint
         _disabledFeatures.Add("DiceHeaderVersion2");
         if (_disabledFeatures.Count > 0)
             a.Add("--disable-features=" + string.Join(",", _disabledFeatures));
+        // 28 实例级 DNS（默认关）
+        var dnsArgs = FinalFeatures.DnsArgs(p, Store.LoadConfig());
+        if (!string.IsNullOrEmpty(dnsArgs)) a.Add(dnsArgs);
         a.Add("--no-first-run");
         a.Add("--no-default-browser-check");
 

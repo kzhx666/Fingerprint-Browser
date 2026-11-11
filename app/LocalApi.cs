@@ -135,6 +135,19 @@ public static class LocalApi
                     payload = new { ok = true, profiles = ProductFeatures.UaProfiles.Keys.ToList(),
                                     current = Store.LoadConfig().uaProfile };
                     break;
+                case "/templates":  // 27 配置模板
+                    payload = new { ok = true, templates = FinalFeatures.Templates };
+                    break;
+                case "/template":   // 27 套用模板
+                    var tk = q["key"] ?? "";
+                    var applied = !string.IsNullOrEmpty(name) && FinalFeatures.ApplyTemplate(name, tk);
+                    payload = new { ok = applied, name, key = tk };
+                    break;
+                case "/benchmark":  // 26 一键跑分
+                    var cfgB = Store.LoadConfig();
+                    var br = FinalFeatures.Benchmark(cfgB.chromeExe, q["seed"] ?? "914410");
+                    payload = new { ok = br.ok, report = br.report, error = br.error };
+                    break;
                 default:
                     code = 404;
                     payload = new { ok = false, error = "unknown endpoint",

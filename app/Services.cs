@@ -353,8 +353,23 @@ public static class Fingerprint
             // (2) WebRTC：Preferences 已写 disable_non_proxied_udp(strict)，
             //     这里再禁本地 UDP 收集作双保险，防止 pref 被覆盖时露网卡。
             a.Add("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
-            // (3) 禁止通过代理之外的方式探测网络可达性
-            a.Add("--disable-background-networking");
+
+            // (3) 智能国内分流 (Split Tunneling):
+            // 自动为国内主流站点及 .cn 注入直连白名单，杜绝海外代理服务商出向 ACL 规则拦截 (0x02 拒连)，
+            // 海外网站 (Google/YouTube/业务平台) 严格走代理，国内网站秒开。
+            var cnBypass = string.Join(";", new[] {
+                "*.cn", "*.bilibili.com", "*.hdslb.com", "*.biliapi.net",
+                "*.baidu.com", "*.bdstatic.com", "*.qq.com", "*.gtimg.com",
+                "*.taobao.com", "*.alicdn.com", "*.alipay.com", "*.tmall.com",
+                "*.jd.com", "*.360buyimg.com", "*.weibo.com", "*.sinaimg.cn",
+                "*.zhihu.com", "*.zhimg.com", "*.163.com", "*.126.net",
+                "*.douyin.com", "*.bytedance.com", "*.kuaishou.com", "*.iqiyi.com",
+                "*.youku.com", "*.sohu.com", "*.csdn.net", "*.gitee.com",
+                "*.meituan.com", "*.xiaohongshu.com", "*.xhscdn.com",
+                "*.douyu.com", "*.huya.com", "<local>"
+            });
+            a.Add($"--proxy-bypass-list=\"{cnBypass}\"");
+
         }
 
         // 代理格式校验在 Launcher 里做（写成无效命令行开关 Chromium 会忽略，

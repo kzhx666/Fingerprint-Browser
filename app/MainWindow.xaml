@@ -266,6 +266,10 @@
                                 <MenuItem Header="同步数据（书签/密码/历史/扩展）" Click="MenuSync_Click"/>
                                 <MenuItem Header="启动前出口 IP 预检" x:Name="MenuProxyPrecheck"
                                           IsCheckable="True" Click="MenuProxyPrecheck_Click"/>
+                                <MenuItem Header="出口地区比对（不符时警告）" x:Name="MenuRegionCheck"
+                                          IsCheckable="True" Click="MenuRegionCheck_Click"/>
+                                <MenuItem Header="地区不符时拦截启动" x:Name="MenuRegionBlock"
+                                          IsCheckable="True" Click="MenuRegionBlock_Click"/>
                                 <MenuItem Header="智能默认浏览器：跟随前台实例" x:Name="MenuSmartDefault"
                                           IsCheckable="True" IsChecked="True" Click="MenuSmartDefault_Click"/>
                                 <MenuItem Header="查看当前默认落到哪个实例" Click="MenuSmartDefaultStatus_Click"/>

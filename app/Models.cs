@@ -37,6 +37,8 @@ public sealed class Profile
     public string node { get; set; } = "";
     public string webrtc { get; set; } = "";
     public string geo { get; set; } = "";
+    /// <summary>实例声明地区：US/HK/JP/... 或中文「美国」。空 = 按名称+时区自动推断。</summary>
+    public string region { get; set; } = "";
     public string tags { get; set; } = "";
     // 实例图标 id（icon-00 .. icon-49），为空则用默认浏览器图标
     public string icon { get; set; } = "";
@@ -52,7 +54,7 @@ public sealed class Profile
         fp_cores = fp_cores, fp_memory = fp_memory, fp_screen = fp_screen,
         fp_dpr = fp_dpr, fp_canvas = fp_canvas, fp_webgl = fp_webgl,
         fp_audio = fp_audio, fp_fonts = fp_fonts, node = node,
-        webrtc = webrtc, geo = geo, tags = tags, icon = icon,
+        webrtc = webrtc, geo = geo, region = region, tags = tags, icon = icon,
         extraFields = extraFields
     };
 }
@@ -106,4 +108,8 @@ public sealed class AppConfig
 
     /// <summary>启动实例前做出口 IP 预检（代理挂了拦住裸奔）。</summary>
     public bool proxyPrecheck { get; set; } = true;
+    /// <summary>出口 IP 国家与实例声明地区比对（默认只警告）。</summary>
+    public bool regionCheck { get; set; } = true;
+    /// <summary>地区不符时拦截启动（false = 只警告）。</summary>
+    public bool regionCheckBlock { get; set; } = false;
 }

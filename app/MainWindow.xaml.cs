@@ -54,6 +54,8 @@ public partial class MainWindow : Window
             // 后台兜底：每 2 秒给所有实例的窗口补独立 AUMID + 实例图标。
             // 覆盖 GUI 启动、用户新开窗口、以及窗口重建等情况。
             MenuProxyPrecheck.IsChecked = _cfg.proxyPrecheck;
+            MenuRegionCheck.IsChecked = _cfg.regionCheck;
+            MenuRegionBlock.IsChecked = _cfg.regionCheckBlock;
             _aumidCts = new System.Threading.CancellationTokenSource();
             var token = _aumidCts.Token;
             Task.Run(() => WindowAumid.ApplyLoop(token), token);
@@ -611,6 +613,23 @@ public partial class MainWindow : Window
             "\n如果任务栏还显示旧图标，重启一下资源管理器：" +
             "\n  Stop-Process -Name explorer -Force",
             "重刷完成", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // ---------------------------------------------------------------- 出口地区比对开关
+
+    void MenuRegionCheck_Click(object sender, RoutedEventArgs e)
+    {
+        _cfg.regionCheck = MenuRegionCheck.IsChecked;
+        Store.SaveConfig(_cfg);
+        SetStatus(_cfg.regionCheck ? "已开启出口地区比对" : "已关闭出口地区比对");
+    }
+
+    void MenuRegionBlock_Click(object sender, RoutedEventArgs e)
+    {
+        _cfg.regionCheckBlock = MenuRegionBlock.IsChecked;
+        Store.SaveConfig(_cfg);
+        SetStatus(_cfg.regionCheckBlock
+            ? "地区不符将拦截启动" : "地区不符只警告，不拦截");
     }
 
     // ---------------------------------------------------------------- 出口预检开关

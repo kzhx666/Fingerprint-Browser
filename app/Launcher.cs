@@ -130,6 +130,24 @@ public static class Launcher
             }
             if (!pre.Error.StartsWith("未配置"))
                 Say($"出口 IP: {pre.Ip}  {pre.Country}/{pre.Region}/{pre.City}  {pre.Org}");
+
+            // ---- 出口 IP 与实例声明地区比对 ----
+            if (cfg.regionCheck)
+            {
+                ProxyPrecheck.CompareRegion(pre, name, p.timezone, p.region);
+                if (pre.RegionVerdict == "mismatch")
+                {
+                    var msg = $"⚠ {pre.RegionNote}\n\n" +
+                              $"出口 IP: {pre.Ip}  代理: {pre.ProxyUsed}";
+                    if (cfg.regionCheckBlock)
+                        return Result.Fail(name, "地区比对未通过，已阻止启动。\n\n" + msg);
+                    Say(msg);   // 默认只警告
+                }
+                else if (pre.RegionVerdict == "match")
+                {
+                    Say($"✓ {pre.RegionNote}");
+                }
+            }
         }
 
         // ---- 4. 启动 ----

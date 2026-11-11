@@ -376,6 +376,7 @@ public partial class EditDialog : Window
         r.timezone = Get("timezone");
         r.lang = Get("lang");
         r.proxy = Get("proxy");
+        r.region = Get("region");
         r.rows = Get("rows");
         r.extra = Get("extra");
         r.fp_cores = Get("fp_cores");

@@ -40,6 +40,16 @@ public sealed class Profile
     /// <summary>实例声明地区：US/HK/JP/... 或中文「美国」。空 = 按名称+时区自动推断。</summary>
     public string region { get; set; } = "";
     public string tags { get; set; } = "";
+    /// <summary>9. 网络断线熔断器：代理不可用时绝对阻断所有流量，严禁回退直连。</summary>
+    public bool killSwitch { get; set; } = false;
+
+    /// <summary>12. 绑定的多平台账号资料。</summary>
+    public List<AccountEntry> accounts { get; set; } = new();
+    /// <summary>12. 启动直达工作台 URL（空则打开默认主页）。</summary>
+    public string defaultAccountUrl { get; set; } = "";
+
+    /// <summary>14. 绑定的扩展插件 ID 或路径列表。</summary>
+    public List<string> extensionIds { get; set; } = new();
     // 实例图标 id（icon-00 .. icon-49），为空则用默认浏览器图标
     public string icon { get; set; } = "";
 
@@ -54,7 +64,7 @@ public sealed class Profile
         fp_cores = fp_cores, fp_memory = fp_memory, fp_screen = fp_screen,
         fp_dpr = fp_dpr, fp_canvas = fp_canvas, fp_webgl = fp_webgl,
         fp_audio = fp_audio, fp_fonts = fp_fonts, node = node,
-        webrtc = webrtc, geo = geo, region = region, tags = tags, icon = icon,
+        webrtc = webrtc, geo = geo, region = region, tags = tags, icon = icon, killSwitch = killSwitch, accounts = accounts.Select(x => x.Clone()).ToList(), defaultAccountUrl = defaultAccountUrl, extensionIds = new List<string>(extensionIds),
         extraFields = extraFields
     };
 }
@@ -123,4 +133,34 @@ public sealed class AppConfig
     public string uaProfile { get; set; } = "default";
     /// <summary>28 实例级 DNS（按声明地区，默认关）。</summary>
     public bool perInstanceDns { get; set; } = false;
+    /// <summary>9. 全局断线熔断器：任何代理异常严禁直连裸奔。</summary>
+    public bool globalKillSwitch { get; set; } = false;
+}
+
+
+/// <summary>12. 平台账号资产资料。</summary>
+public sealed class AccountEntry
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N").Substring(0, 6);
+    public string Platform { get; set; } = "Google"; // Google / Amazon / Facebook / Twitter / TikTok / eBay / Custom
+    public string Username { get; set; } = "";
+    public string PasswordMemo { get; set; } = "";
+    public string TwoFactorSecret { get; set; } = "";
+    public string LoginUrl { get; set; } = "";
+    public string Status { get; set; } = "正常"; // 正常 / 异常 / 需二审 / 冻结
+    public string Note { get; set; } = "";
+
+    public AccountEntry Clone() => new()
+    {
+        Id = Id, Platform = Platform, Username = Username, PasswordMemo = PasswordMemo,
+        TwoFactorSecret = TwoFactorSecret, LoginUrl = LoginUrl, Status = Status, Note = Note
+    };
+}
+
+/// <summary>28. 本地工作区配置。</summary>
+public sealed class WorkspaceConfig
+{
+    public string CurrentWorkspace { get; set; } = "默认工作区";
+    public string OperatorName { get; set; } = "Admin";
+    public List<string> Workspaces { get; set; } = new() { "默认工作区" };
 }

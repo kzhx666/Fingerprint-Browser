@@ -1364,4 +1364,295 @@ public partial class MainWindow : Window
         MessageBox.Show((so2 + se2).Trim(), c2 == 0 ? "订阅" : "订阅失败");
         RefreshList();
     }
+
+    // =========================================================================
+    // 现代商业级多开控制台导航与新功能事件处理
+    // =========================================================================
+
+    void SetActiveNav(Button activeBtn, Grid activeView)
+    {
+        NavProfiles.Style = (Style)FindResource("BtnGhost");
+        NavProxies.Style = (Style)FindResource("BtnGhost");
+        NavSync.Style = (Style)FindResource("BtnGhost");
+        NavHealth.Style = (Style)FindResource("BtnGhost");
+        NavExtensions.Style = (Style)FindResource("BtnGhost");
+        NavAutomation.Style = (Style)FindResource("BtnGhost");
+        activeBtn.Style = (Style)FindResource("BtnPrimary");
+
+        ViewProfiles.Visibility = Visibility.Collapsed;
+        ViewProxies.Visibility = Visibility.Collapsed;
+        ViewSync.Visibility = Visibility.Collapsed;
+        ViewHealth.Visibility = Visibility.Collapsed;
+        ViewExtensions.Visibility = Visibility.Collapsed;
+        ViewAutomation.Visibility = Visibility.Collapsed;
+        activeView.Visibility = Visibility.Visible;
+    }
+
+    void NavProfiles_Click(object sender, RoutedEventArgs e) => SetActiveNav(NavProfiles, ViewProfiles);
+
+    void NavProxies_Click(object sender, RoutedEventArgs e)
+    {
+        SetActiveNav(NavProxies, ViewProxies);
+        RefreshProxyPool();
+    }
+
+    void NavSync_Click(object sender, RoutedEventArgs e)
+    {
+        SetActiveNav(NavSync, ViewSync);
+        RefreshSyncViews();
+    }
+
+    void NavHealth_Click(object sender, RoutedEventArgs e) => SetActiveNav(NavHealth, ViewHealth);
+
+    void NavExtensions_Click(object sender, RoutedEventArgs e)
+    {
+        SetActiveNav(NavExtensions, ViewExtensions);
+        RefreshExtensions();
+    }
+
+    void NavAutomation_Click(object sender, RoutedEventArgs e)
+    {
+        SetActiveNav(NavAutomation, ViewAutomation);
+        try
+        {
+            var tokPath = System.IO.Path.Combine(Paths.Root, "_api-token");
+            if (File.Exists(tokPath)) TxtApiToken.Text = File.ReadAllText(tokPath).Trim();
+            else TxtApiToken.Text = "(启动 --api 模式后自动生成)";
+        }
+        catch { }
+        var n = Selected?.Name ?? Store.ListInstances().FirstOrDefault() ?? "默认环境";
+        TxtSnippet.Text = FrameworkConnector.GetConnectionInfo(n).PlaywrightPython;
+    }
+
+    void RefreshProxyPool()
+    {
+        GridProxies.ItemsSource = ProxyManager.LoadPool();
+    }
+
+    void RefreshExtensions()
+    {
+        GridExtensions.ItemsSource = ExtensionManager.ListAvailable();
+    }
+
+    void RefreshSyncViews()
+    {
+        var names = Store.ListInstances();
+        CmbSyncMaster.ItemsSource = names;
+        if (CmbSyncMaster.SelectedIndex < 0 && names.Count > 0) CmbSyncMaster.SelectedIndex = 0;
+        ListSyncSlaves.ItemsSource = names.Select(n => new CheckBox { Content = n, IsChecked = true }).ToList();
+    }
+
+    // 智能指纹生成 (Smart Fingerprint Generator)
+    void BtnSmartGen_Click(object sender, RoutedEventArgs e)
+    {
+        var name = InputDialog.Ask(this, "智能指纹生成", "环境名称", "智能环境-" + Random.Shared.Next(100, 999));
+        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name.Trim();
+        var vErr = PathGuard.ValidateName(name);
+        if (vErr is not null) { MessageBox.Show("名称非法: " + vErr, "智能生成"); return; }
+        if (Directory.Exists(Paths.InstanceDir(name))) { MessageBox.Show("已存在同名环境", "智能生成"); return; }
+
+        var prof = SmartFingerprint.Generate(name, "windows");
+        Store.SaveProfile(name, prof);
+        RefreshList();
+        SetStatus($"已智能生成相容环境方案: {name}");
+        MessageBox.Show($"已智能生成全套相容方案：\n\n平台: {prof.platform}\nCPU: {prof.fp_cores}核\n内存: {prof.fp_memory}GB\n分辨率: {prof.fp_screen} (DPR {prof.fp_dpr})\nWebGL: {prof.fp_webgl}\n时区: {prof.timezone}", "智能生成成功");
+    }
+
+    // 批量启动 (Batch Launch)
+    void BtnBatchStart_Click(object sender, RoutedEventArgs e)
+    {
+        var names = Store.ListInstances();
+        if (names.Count == 0) return;
+        var r = MessageBox.Show($"确认错峰启动全部 {names.Count} 个环境？", "批量启动", MessageBoxButton.YesNo);
+        if (r != MessageBoxResult.Yes) return;
+
+        _ = Task.Run(async () =>
+        {
+            await BatchEngine.BatchLaunchAsync(names, _cfg, 2, s => Dispatcher.Invoke(() => SetStatus(s)));
+            Dispatcher.Invoke(() => { RefreshList(); SetStatus("批量启动完成"); });
+        });
+    }
+
+    // 批量停止 (Batch Stop)
+    void BtnBatchStop_Click(object sender, RoutedEventArgs e)
+    {
+        var names = Store.ListInstances();
+        BatchEngine.BatchStop(names);
+        RefreshList();
+        SetStatus("已批量停止全部环境进程");
+    }
+
+    // 多屏窗口网格平铺 (Window Tiler)
+    void BtnTile_Click(object sender, RoutedEventArgs e)
+    {
+        int tiled = WindowTiler.TileWindows();
+        SetStatus($"已网格平铺 {tiled} 个窗口");
+        if (tiled == 0) MessageBox.Show("未找到打开的 Chrome 实例窗口。", "窗口平铺");
+    }
+
+    // 快捷标签与状态过滤 (Filter Chips)
+    void FilterChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var text = (btn.Content?.ToString() ?? "").Trim();
+        if (text.Contains("全部")) SearchBox.Text = "";
+        else if (text.Contains("运行中")) SearchBox.Text = "运行中";
+        else if (text.Contains("美区")) SearchBox.Text = "US";
+        else if (text.Contains("日区")) SearchBox.Text = "JP";
+    }
+
+    // 代理导入
+    void BtnImportProxies_Click(object sender, RoutedEventArgs e)
+    {
+        var raw = InputDialog.Ask(this, "批量导入代理", "粘贴代理行 (格式: host:port:user:pass 或 socks5://...)", "");
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        var (nImp, nDup, errs) = ProxyManager.ImportText(raw);
+        RefreshProxyPool();
+        MessageBox.Show($"导入完成！\n成功新增: {nImp} 个\n重复跳过: {nDup} 个\n错误: {errs.Count} 个", "代理导入");
+    }
+
+    // 批量测速
+    void BtnTestProxies_Click(object sender, RoutedEventArgs e)
+    {
+        SetStatus("正在批量测速节点…");
+        var pool = ProxyManager.LoadPool();
+        _ = Task.Run(async () =>
+        {
+            await ProxyManager.BatchTestAsync(pool);
+            Dispatcher.Invoke(() => {
+                RefreshProxyPool();
+                SetStatus("代理批量测速完成");
+            });
+        });
+    }
+
+    // 自动分配代理
+    void BtnAssignProxies_Click(object sender, RoutedEventArgs e)
+    {
+        var names = Store.ListInstances();
+        int n = ProxyManager.AutoAssign("默认", names);
+        RefreshList();
+        MessageBox.Show($"已自动为 {n} 个环境分配代理节点。", "自动分配代理");
+    }
+
+    // 同步器控制
+    void BtnSyncStart_Click(object sender, RoutedEventArgs e)
+    {
+        var master = CmbSyncMaster.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(master)) { MessageBox.Show("请选择主控窗口", "同步器"); return; }
+        SetStatus($"正在连接主控窗口 {master}…");
+        // 获取所有从属
+        var slaves = new Dictionary<string, int>();
+        int mockPort = 9811;
+        foreach (var it in ListSyncSlaves.Items)
+        {
+            if (it is CheckBox cb && cb.IsChecked == true && cb.Content is string sName && sName != master)
+            {
+                slaves[sName] = ++mockPort;
+            }
+        }
+        _ = Task.Run(async () =>
+        {
+            var (ok, msg) = await ActionSynchronizer.StartSyncAsync(master, 9810, slaves);
+            Dispatcher.Invoke(() => {
+                SetStatus(msg);
+                MessageBox.Show(msg, "操作同步器");
+            });
+        });
+    }
+
+    void BtnSyncPause_Click(object sender, RoutedEventArgs e)
+    {
+        ActionSynchronizer.IsPaused = !ActionSynchronizer.IsPaused;
+        SetStatus(ActionSynchronizer.IsPaused ? "同步已暂停" : "同步已恢复");
+    }
+
+    void BtnSyncStop_Click(object sender, RoutedEventArgs e)
+    {
+        ActionSynchronizer.StopSync();
+        SetStatus("同步已停止");
+    }
+
+    // 地域自动联动 (Auto Align)
+    void MenuAutoAlign_Click(object sender, RoutedEventArgs e)
+    {
+        var n = NeedSelection();
+        if (n is null) return;
+        var p = Store.LoadProfile(n);
+        if (string.IsNullOrEmpty(p.proxy)) { MessageBox.Show("当前环境未配置代理，无法自动联动地域。", "地域自动联动"); return; }
+
+        SetStatus("正在通过代理探测实际出口并自动补齐地域…");
+        _ = Task.Run(() =>
+        {
+            var (ok, ip, country, tz, lang, geo, err) = ProxyPrecheck.AutoAlignRegion(p.proxy, p);
+            Dispatcher.Invoke(() => {
+                if (ok)
+                {
+                    Store.SaveProfile(n, p);
+                    RefreshList();
+                    TxtHealthReport.Text = $"【地域自动联动成功】\n环境: {n}\n出口 IP: {ip}\n国家/地区: {country}\n时区: {tz}\n语言: {lang}\n经纬度: {geo}";
+                    SetStatus($"已联动更新 {n} 为 {country}");
+                    MessageBox.Show(TxtHealthReport.Text, "地域联动");
+                }
+                else
+                {
+                    MessageBox.Show("联动失败: " + err, "地域联动");
+                }
+            });
+        });
+    }
+
+    // 真实浏览器跑分
+    void BtnRunBench_Click(object sender, RoutedEventArgs e)
+    {
+        SetStatus("正在拉起真实内核跑分探针…");
+        TxtHealthReport.Text = "正在运行真实浏览器并采集 Canvas / WebGL / WebRTC / Audio / UA 探针指标，请稍候 (约10秒)…";
+        _ = Task.Run(() =>
+        {
+            var (ok, rep, file, err) = FinalFeatures.Benchmark(_cfg.chromeExe, Selected?.Seed ?? "914410");
+            Dispatcher.Invoke(() => {
+                if (ok)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine($"【真实浏览器跑分报告 - {rep.totalScore}分】");
+                    sb.AppendLine($"时间: {rep.timestamp}  Seed: {rep.seed}");
+                    sb.AppendLine($"通过项: {rep.passedCount}  失败项: {rep.failedCount}");
+                    sb.AppendLine("--------------------------------------------------");
+                    foreach (var c in rep.checks)
+                    {
+                        sb.AppendLine($"  {(c.pass ? "✓" : "✗")} {c.name,-24} {c.actual}");
+                    }
+                    TxtHealthReport.Text = sb.ToString();
+                    SetStatus($"跑分完成: {rep.totalScore}分");
+                }
+                else
+                {
+                    TxtHealthReport.Text = $"跑分失败: {err}\n报告文件: {file}";
+                }
+            });
+        });
+    }
+
+    void BtnOpenExtDir_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(ExtensionManager.ExtensionsDir);
+        Process.Start("explorer.exe", ExtensionManager.ExtensionsDir);
+    }
+
+    void BtnRefreshExt_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshExtensions();
+        SetStatus("已刷新本地扩展库");
+    }
+
+    void BtnCopyToken_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(TxtApiToken.Text))
+        {
+            Clipboard.SetText(TxtApiToken.Text);
+            SetStatus("已复制 API 令牌到剪贴板");
+        }
+    }
+
 }

@@ -338,4 +338,21 @@ public static class ProxyPrecheck
     static string Get(JsonElement e, string k)
         => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String
            ? v.GetString() ?? "" : "";
+    /// <summary>
+    /// 8. 地域与网络自动联动：通过指定代理探测出口 IP，自动补齐时区、语言、经纬度及声明地区。
+    /// </summary>
+    public static (bool ok, string ip, string country, string timezone, string lang, string geo, string error)
+        AutoAlignRegion(string proxyUri, Profile profile)
+    {
+        if (string.IsNullOrWhiteSpace(proxyUri))
+            return (false, "", "", "", "", "", "代理配置为空");
+
+        var pre = Check("--proxy-server=" + proxyUri);
+        if (!pre.Ok)
+            return (false, "", "", "", "", "", "代理探测失败: " + pre.Error);
+
+        SmartFingerprint.ApplyRegionDefaults(profile, pre.Country);
+        return (true, pre.Ip, pre.Country, profile.timezone, profile.lang, profile.geo, "");
+    }
+
 }

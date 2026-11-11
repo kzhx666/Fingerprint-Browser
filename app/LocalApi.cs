@@ -75,7 +75,10 @@ public static class LocalApi
     static readonly HashSet<string> Mutating = new(StringComparer.OrdinalIgnoreCase)
     {
         "/launch", "/stop", "/import", "/rotate", "/template", "/loadset",
-        "/warmup", "/screenshot", "/benchmark", "/export"
+        "/warmup", "/screenshot", "/benchmark", "/export",
+        "/proxies/import", "/proxies/test", "/align", "/cookies/inject",
+        "/sync/start", "/sync/stop", "/tile", "/type", "/clean",
+        "/batch/launch", "/batch/stop"
     };
 
     public static void Start(int port = 8790)
@@ -245,6 +248,70 @@ public static class LocalApi
                     var tk = q["key"] ?? "";
                     var applied = !string.IsNullOrEmpty(name) && FinalFeatures.ApplyTemplate(name, tk);
                     payload = new { ok = applied, name, key = tk };
+                    break;
+                                case "/proxies":    // 10 代理池列表
+                    var pool = ProxyManager.LoadPool().Select(x => new {
+                        x.Id, x.Name, x.Type, x.Host, x.Port,
+                        Proxy = x.MaskedUri(), x.Group, x.Region,
+                        x.LatencyMs, x.Alive, x.LastChecked, x.AssignedCount
+                    });
+                    payload = new { ok = true, proxies = pool };
+                    break;
+                case "/proxies/import":  // 10 批量导入代理
+                    string rawText = "";
+                    if (req.HasEntityBody)
+                    {
+                        using var sr = new System.IO.StreamReader(req.InputStream, req.ContentEncoding);
+                        rawText = sr.ReadToEnd();
+                    }
+                    if (string.IsNullOrEmpty(rawText)) rawText = q["text"] ?? "";
+                    var (nImp, nDup, pErrs) = ProxyManager.ImportText(rawText, q["group"] ?? "默认");
+                    payload = new { ok = pErrs.Count == 0, imported = nImp, duplicates = nDup, errors = pErrs };
+                    break;
+                case "/proxies/test":    // 10 代理测速
+                    var pNodes = ProxyManager.LoadPool();
+                    ProxyManager.BatchTestAsync(pNodes).GetAwaiter().GetResult();
+                    payload = new { ok = true, tested = pNodes.Count };
+                    break;
+                case "/diagnose":   // 6 指纹冲突诊断
+                    if (string.IsNullOrEmpty(name)) { code = 400; payload = new { ok = false, error = "missing name" }; break; }
+                    var dp = Store.LoadProfile(name);
+                    var diagRep = FingerprintDiagnostic.Diagnose(dp);
+                    payload = new { ok = true, riskScore = diagRep.RiskScore, passed = diagRep.Passed, items = diagRep.Items };
+                    break;
+                case "/align":      // 8 地域网络自动联动
+                    if (string.IsNullOrEmpty(name)) { code = 400; payload = new { ok = false, error = "missing name" }; break; }
+                    var ap = Store.LoadProfile(name);
+                    var (aOk, aIp, aCountry, aTz, aLang, aGeo, aErr) = ProxyPrecheck.AutoAlignRegion(ap.proxy, ap);
+                    if (aOk) Store.SaveProfile(name, ap);
+                    payload = new { ok = aOk, ip = aIp, country = aCountry, timezone = aTz, lang = aLang, geo = aGeo, error = aErr };
+                    break;
+                case "/connect":    // 24 自动化框架直连代码
+                    int cPort = 9222;
+                    if (int.TryParse(q["port"] ?? "", out var cp)) cPort = cp;
+                    var connInfo = FrameworkConnector.GetConnectionInfo(name, cPort);
+                    payload = new { ok = true, info = connInfo };
+                    break;
+                case "/tile":       // 20 窗口多屏网格平铺
+                    int cols = 0;
+                    if (int.TryParse(q["cols"] ?? "", out var co)) cols = co;
+                    var tiledCount = WindowTiler.TileWindows(cols);
+                    payload = new { ok = true, tiled = tiledCount };
+                    break;
+                case "/clean":      // 17 环境存储细粒度清理
+                    if (string.IsNullOrEmpty(name)) { code = 400; payload = new { ok = false, error = "missing name" }; break; }
+                    bool clCache = !string.Equals(q["cache"], "false", StringComparison.OrdinalIgnoreCase);
+                    bool clIdb = string.Equals(q["idb"], "true", StringComparison.OrdinalIgnoreCase);
+                    bool clSw = string.Equals(q["sw"], "true", StringComparison.OrdinalIgnoreCase);
+                    var clRep = StorageCleaner.Clean(name, clCache, clIdb, clSw);
+                    payload = new { ok = true, bytesFreed = clRep.BytesFreed, filesDeleted = clRep.FilesDeleted, targets = clRep.CleanedTargets };
+                    break;
+                case "/sync/status": // 18 同步器状态
+                    payload = new { ok = true, running = ActionSynchronizer.IsRunning, master = ActionSynchronizer.MasterInstance, paused = ActionSynchronizer.IsPaused, slaves = ActionSynchronizer.ActiveSlaves };
+                    break;
+                case "/sync/stop":   // 18 停止同步器
+                    ActionSynchronizer.StopSync();
+                    payload = new { ok = true, message = "同步已停止" };
                     break;
                 case "/benchmark":  // 26 逐项跑分检测报告
                     var cfgB = Store.LoadConfig();

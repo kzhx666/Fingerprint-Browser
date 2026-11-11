@@ -75,10 +75,11 @@ public static class Launcher
         // ---- 2. WebRTC pref ----
         var policy = Fingerprint.WebRtcPolicy(p) switch
         {
-            "strict" => "disable_non_proxied_udp",
+            "strict" or "proxy" => "disable_non_proxied_udp",
             "public" => "default_public_interface_only",
-            "off" => "default",
-            _ => ""
+            "direct" or "off" => "default",
+            "disabled" => "disable_non_proxied_udp",
+            _ => "disable_non_proxied_udp"
         };
         if (policy.Length > 0 && File.Exists(Paths.SetPref))
         {
@@ -101,6 +102,10 @@ public static class Launcher
         }
 
         var args = Fingerprint.BuildArgs(name, p, cfg.chromeExe);
+        if (string.Equals(p.webrtc, "disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            args += " --disable-webrtc";
+        }
         if (!string.IsNullOrEmpty(p.node))
         {
             var port = 10800 + Math.Abs(name.GetHashCode() % 100);
@@ -123,12 +128,27 @@ public static class Launcher
         if (cfg.proxyPrecheck)
         {
             var pre = ProxyPrecheck.Check(args, Say);
+            bool useKillSwitch = p.killSwitch || cfg.globalKillSwitch;
             if (!pre.Ok)
             {
+                var ksPrefix = useKillSwitch ? "【Kill Switch 熔断拦截】" : "";
                 return Result.Fail(name,
-                    $"出口 IP 预检失败，已阻止启动（避免代理挂了浏览器直连裸奔）。\n\n" +
+                    $"{ksPrefix}出口 IP 预检失败，已阻止启动（避免代理挂了浏览器直连裸奔）。\n\n" +
                     $"代理: {pre.ProxyUsed}\n错误: {pre.Error}\n\n" +
-                    "请检查代理是否可用，或到「更多 → 关闭出口预检」临时跳过。");
+                    (useKillSwitch ? "当前实例开启了网络断线熔断器，代理异常时彻底切断流量，严禁回退直连！" : "请检查代理是否可用，或到「更多 → 关闭出口预检」临时跳过。"));
+            }
+
+            if (useKillSwitch && (!string.IsNullOrEmpty(p.proxy) || !string.IsNullOrEmpty(p.node)))
+            {
+                // Kill Switch 注入安全防泄漏规则：阻断一切直连 DNS 与未走代理的 UDP 流量
+                if (!args.Contains("--host-resolver-rules"))
+                {
+                    args += " --host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost\"";
+                }
+                if (!args.Contains("--force-webrtc-ip-handling-policy"))
+                {
+                    args += " --force-webrtc-ip-handling-policy=disable_non_proxied_udp";
+                }
             }
             if (!pre.Error.StartsWith("未配置"))
                 Say($"出口 IP: {pre.Ip}  {pre.Country}/{pre.Region}/{pre.City}  {pre.Org}");
@@ -151,6 +171,19 @@ public static class Launcher
                 }
             }
             ProxyPrecheck.Save(name, pre);
+        }
+
+                // 14. 扩展插件批量加载
+        var extArg = ExtensionManager.BuildLoadArg(p.extensionIds);
+        if (!string.IsNullOrEmpty(extArg))
+        {
+            args += " " + extArg;
+        }
+
+        // 12. 账号工作台启动直达页
+        if (!string.IsNullOrEmpty(p.defaultAccountUrl) && !args.Contains("http://") && !args.Contains("https://") && !args.Contains("file:///"))
+        {
+            args += $" \"{p.defaultAccountUrl}\"";
         }
 
         // ---- 4. 启动 ----

@@ -354,20 +354,77 @@ public static class Fingerprint
             //     这里再禁本地 UDP 收集作双保险，防止 pref 被覆盖时露网卡。
             a.Add("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
 
-            // (3) 智能国内分流 (Split Tunneling):
-            // 自动为国内主流站点及 .cn 注入直连白名单，杜绝海外代理服务商出向 ACL 规则拦截 (0x02 拒连)，
-            // 海外网站 (Google/YouTube/业务平台) 严格走代理，国内网站秒开。
-            var cnBypass = string.Join(";", new[] {
-                "*.cn", "*.bilibili.com", "*.hdslb.com", "*.biliapi.net",
-                "*.baidu.com", "*.bdstatic.com", "*.qq.com", "*.gtimg.com",
-                "*.taobao.com", "*.alicdn.com", "*.alipay.com", "*.tmall.com",
-                "*.jd.com", "*.360buyimg.com", "*.weibo.com", "*.sinaimg.cn",
-                "*.zhihu.com", "*.zhimg.com", "*.163.com", "*.126.net",
-                "*.douyin.com", "*.bytedance.com", "*.kuaishou.com", "*.iqiyi.com",
-                "*.youku.com", "*.sohu.com", "*.csdn.net", "*.gitee.com",
-                "*.meituan.com", "*.xiaohongshu.com", "*.xhscdn.com",
-                "*.douyu.com", "*.huya.com", "<local>"
-            });
+            // (3) 全域国内通配分流 (Comprehensive China Direct Bypass):
+            // 采用顶级通配规则彻底覆盖所有国内互联网体系 (B站全系/阿里系/腾讯系/百度系/字节系/京东/网易/美团/快手/政企银行及所有.cn域名)
+            // 杜绝海外 SOCKS5 代理出向 ACL 规则拦截国内站点 (0x02)，同时保证国外业务平台 100% 走代理。
+            var rules = new List<string>
+            {
+                "*.cn", "*.com.cn", "*.net.cn", "*.org.cn", "*.gov.cn", "*.edu.cn",
+                // B站全系 (主站/游戏 biligame/直播/视频CDN/登录/API)
+                "*bili*", "*hdslb*", "*acgvideo*", "*acg.tv*",
+                // 阿里全系 (淘宝/天猫/支付宝/阿里云/1688/菜鸟/钉钉/高德地图)
+                "*taobao*", "*tmall*", "*alipay*", "*alicdn*", "*aliyun*", "*alibaba*",
+                "*1688*", "*cainiao*", "*ele.me*", "*fliggy*", "*dingtalk*", "*amap*", "*autonavi*",
+                // 腾讯全系 (QQ/微信/腾讯云/财付通/CDN)
+                "*qq.com*", "*gtimg*", "*qpic*", "*qlogo*", "*tencent*", "*wechat*",
+                "*weixin*", "*tenpay*", "*myqcloud*",
+                // 百度全系 (搜索/贴吧/网盘/爱奇艺/地图)
+                "*baidu*", "*bdstatic*", "*baidupcs*", "*hao123*", "*tieba*", "*iqiyi*",
+                // 字节全系 (抖音/今日头条/西瓜视频/飞书/火山/API)
+                "*douyin*", "*bytedance*", "*zijie*", "*toutiao*", "*feishu*", "*pstatp*", "*snssdk*", "*volces*",
+                // 快手全系
+                "*kuaishou*", "*yximgs*", "*gifshow*",
+                // 京东全系
+                "*jd.com*", "*360buy*", "*jdcloud*", "*jcloudcache*",
+                // 网易全系 (邮箱/云音乐/游戏/有道)
+                "*163.com*", "*126.net*", "*netease*", "*youdao*", "*ydstatic*",
+                // 新浪 / 微博
+                "*weibo*", "*sina*",
+                // 知乎
+                "*zhihu*", "*zhimg*",
+                // 小红书
+                "*xiaohongshu*", "*xhscdn*",
+                // 美团 / 大众点评
+                "*meituan*", "*dianping*",
+                // 拼多多
+                "*pinduoduo*", "*yangkeduo*",
+                // 视频 / 媒体 / 门户
+                "*youku*", "*sohu*", "*douyu*", "*huya*", "*mgtv*", "*cctv*", "*ifeng*", "*xinhuanet*", "*people.com*",
+                // 开发者 / 技术社区
+                "*csdn*", "*gitee*", "*cnblogs*", "*oschina*", "*juejin*", "*v2ex*", "*segmentfault*",
+                // 民生 / 银行 / 通信运营商
+                "*12306*", "*chinamobile*", "*10010*", "*189.cn*", "*unionpay*", "*icbc*", "*ccb*", "*boc*", "*abchina*", "*cmbchina*",
+                // 办公 / 协作
+                "*wps*", "*kdocs*",
+                // 本地与回环
+                "<local>", "127.0.0.1", "localhost"
+            };
+
+            // 用户自定义扩展白名单 (D:\KZProfiles\cn_bypass_domains.txt)
+            try
+            {
+                var customFile = Path.Combine(Paths.Root, "cn_bypass_domains.txt");
+                if (File.Exists(customFile))
+                {
+                    foreach (var line in File.ReadAllLines(customFile))
+                    {
+                        var rule = line.Trim();
+                        if (rule.Length > 0 && !rule.StartsWith("#") && !rules.Contains(rule))
+                            rules.Add(rule);
+                    }
+                }
+                else
+                {
+                    File.WriteAllText(customFile,
+                        "# 自定义国内直连分流白名单 (每行一条规则，支持 * 通配符)\n" +
+                        "# 示例:\n" +
+                        "# *mycompany.com*\n" +
+                        "# 10.0.0.0/8\n");
+                }
+            }
+            catch { }
+
+            var cnBypass = string.Join(";", rules);
             a.Add($"--proxy-bypass-list=\"{cnBypass}\"");
 
         }

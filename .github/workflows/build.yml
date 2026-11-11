@@ -16,6 +16,8 @@ env:
   DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: 'utf-8'
 
 jobs:
   build:
@@ -72,7 +74,7 @@ jobs:
           $files = @(
             'node-proxy.py', 'snapshot.py', 'backup.py', 'sync-data.py',
             'set-pref.py', 'account-sync.py', 'autosync.py',
-            '指纹自检.html', 'manager.example.json', '项目说明.md', 'README.md'
+            '指纹自检.html', 'probe_full.html', 'manager.example.json', '项目说明.md', 'README.md'
           )
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item 'out/KZManager.exe' dist/

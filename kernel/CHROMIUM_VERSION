@@ -1,9 +1,37 @@
-# Chromium 源码版本基准配置
-# 用于锁定定制内核补丁所基于的受支持 Chromium 上游版本与提交。
+# ==============================================================================
+# Chromium 源码版本基准配置与发布验收门禁
+# ==============================================================================
 
 CHROMIUM_VERSION=158.0.8127.18
 CHROMIUM_COMMIT=6449d9f9a6a906edff724b7b220199b3fde4615c
 CHROMIUM_DATE=2026-11-03
 CHANNEL=stable
 TAG=158.0.8127.18
-NOTES=Official build configuration: is_official_build=true, symbol_level=0, proprietary_codecs=true, ffmpeg_branding=Chrome
+
+# 官方编译参数配置
+GN_ARGS=is_official_build=true symbol_level=0 proprietary_codecs=true ffmpeg_branding=Chrome is_component_build=false target_cpu=x64
+NINJA_TARGETS=chrome.dll chrome.exe
+
+# ------------------------------------------------------------------------------
+# 发布版本验收门禁规范 (Release Acceptance Gate)
+# ------------------------------------------------------------------------------
+# 任何内核版本发布或正式合并前，必须满足以下硬性门禁：
+#
+# 1. 补丁首次应用与幂等测试全绿 (CI 自动化)
+#    命令: python kernel/test_patches.py
+#    要求: 91 项补丁首次应用全通过，重复应用报告 ALREADY，0 FAILED，32 项关键代码锚点无遗漏。
+#
+# 2. 数据工具完整性与防回滚测试全绿 (CI 自动化)
+#    命令: python tests/test_data_integrity.py
+#    要求: 克隆、快照、备份、还原、同步数据一致性校验通过；运行中拒绝与写入中断回滚验证通过。
+#
+# 3. 生产源码树幂等性检验
+#    命令: python kernel/apply_patches.py C:\chromium\src --check
+#    要求: 0 FAILED，完全一致。
+#
+# 4. 真实浏览器指纹与代理全量回归检验
+#    命令: python kernel/run_browser_regression.py --chrome D:\KZBuild\App\chrome.exe
+#    要求:
+#      - 单实例基准 16 项全通过 (UA/UA-CH/Intl/Canvas/WebGL WebKit伪装/WebRTC零私网泄漏等)
+#      - 跨实例 3 Seed 独立性 (Canvas/Audio/WebRTC/NetInfo/Storage) 达到 2/3 以上唯一性
+#      - 产物写入 kernel/regression_results.json 且 "passed": true。

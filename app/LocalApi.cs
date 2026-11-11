@@ -31,15 +31,44 @@ public static class LocalApi
         try
         {
             if (System.IO.File.Exists(TokenPath))
+            {
                 _token = System.IO.File.ReadAllText(TokenPath).Trim();
+                ProtectTokenFile(TokenPath);
+            }
         }
         catch { }
         if (_token.Length < 16)
         {
             _token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-            try { System.IO.File.WriteAllText(TokenPath, _token); } catch { }
+            try
+            {
+                System.IO.File.WriteAllText(TokenPath, _token);
+                ProtectTokenFile(TokenPath);
+            }
+            catch { }
         }
         return _token;
+    }
+
+    /// <summary>P2-9: 限制令牌文件的 Windows ACL 权限，仅允许当前用户读取，其他用户无权访问。</summary>
+    static void ProtectTokenFile(string path)
+    {
+        if (!OperatingSystem.IsWindows() || !System.IO.File.Exists(path)) return;
+        try
+        {
+            var user = Environment.UserName;
+            var psi = new System.Diagnostics.ProcessStartInfo("icacls.exe",
+                $"\"{path}\" /inheritance:r /grant:r \"{user}\":(F)")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(3000);
+        }
+        catch { }
     }
 
     // P0-2: 会改变状态的端点，必须 POST
@@ -62,7 +91,7 @@ public static class LocalApi
             return;
         }
         Console.Error.WriteLine($"LocalApi listening on 127.0.0.1:{port}");
-        Console.Error.WriteLine($"LocalApi token (also in {TokenPath}): {tok}");
+        Console.Error.WriteLine($"LocalApi token loaded from {TokenPath} (fingerprint: {(tok.Length > 6 ? tok.Substring(0, 6) : tok)}...)");
         _ = Task.Run(() => Loop(_cts.Token));
     }
 
@@ -93,8 +122,19 @@ public static class LocalApi
         int code = 200;
         try
         {
-            // P0-1: 令牌鉴权
-            var supplied = req.QueryString["token"] ?? req.Headers["X-KZ-Token"] ?? "";
+            // P2-9: 优先从请求头提取令牌 (X-KZ-Token 或 Authorization: Bearer <token>)，
+            // 避免令牌在 URL、代理日志、浏览器历史中泄露。
+            string supplied = req.Headers["X-KZ-Token"] ?? "";
+            if (string.IsNullOrEmpty(supplied))
+            {
+                var authHdr = req.Headers["Authorization"] ?? "";
+                if (authHdr.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    supplied = authHdr.Substring(7).Trim();
+            }
+            if (string.IsNullOrEmpty(supplied))
+            {
+                supplied = req.QueryString["token"] ?? "";
+            }
             if (!FixedTimeEquals(supplied, EnsureToken()))
             {
                 res.StatusCode = 401;
@@ -209,7 +249,7 @@ public static class LocalApi
                 case "/benchmark":  // 26 逐项跑分检测报告
                     var cfgB = Store.LoadConfig();
                     var (bok, brep, bfile, berr) = FinalFeatures.Benchmark(cfgB.chromeExe, q["seed"] ?? "914410");
-                    payload = new { ok = bok, score = brep.totalScore, passed = brep.passedCount, failed = brep.failedCount, file = bfile, failedItems = brep.failedItems, checks = brep.checks, error = berr };
+                    payload = new { ok = bok && brep.ok, score = brep.totalScore, passed = brep.passedCount, failed = brep.failedCount, file = bfile, failedItems = brep.failedItems, checks = brep.checks, error = berr };
                     break;
                 case "/configsets":   // 22 本地配置集
                     payload = new { ok = true, sets = FinalFeatures.ConfigSets() };

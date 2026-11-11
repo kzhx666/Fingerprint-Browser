@@ -182,6 +182,7 @@ public static class ProductFeatures
         public bool ok { get; set; }
         public int visited { get; set; }
         public List<string> sites { get; set; } = new();
+        public List<string> failedSites { get; set; } = new();
         public string error { get; set; } = "";
     }
 
@@ -218,25 +219,87 @@ public static class ProductFeatures
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(45));
             await ws.ConnectAsync(new Uri(wsUrl), cts.Token);
 
+            // 启用 Page 与 Network 事件监听
             int id = 1;
+            var enablePage = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id = id++, method = "Page.enable" }));
+            await ws.SendAsync(new ArraySegment<byte>(enablePage), System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
+            var enableNet = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { id = id++, method = "Network.enable" }));
+            await ws.SendAsync(new ArraySegment<byte>(enableNet), System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
+
+            var buf = new byte[65536];
             foreach (var site in targetSites)
             {
+                int navId = id++;
                 var payload = JsonSerializer.Serialize(new {
-                    id = id++,
+                    id = navId,
                     method = "Page.navigate",
                     @params = new { url = site }
                 });
                 var bytes = Encoding.UTF8.GetBytes(payload);
-                await ws.SendAsync(new ArraySegment<byte>(bytes),
-                                   System.Net.WebSockets.WebSocketMessageType.Text,
-                                   true, cts.Token);
-                res.sites.Add(site);
-                res.visited++;
-                Log("warmup.visited", site);
-                await Task.Delay(2000, cts.Token);
+                await ws.SendAsync(new ArraySegment<byte>(bytes), System.Net.WebSockets.WebSocketMessageType.Text, true, cts.Token);
+
+                // 等待导航结果及 loadEventFired 事件
+                bool loadSuccess = false;
+                string? siteError = null;
+                var siteDeadline = DateTime.Now.AddSeconds(8);
+
+                while (DateTime.Now < siteDeadline && !cts.IsCancellationRequested)
+                {
+                    var ms = new MemoryStream();
+                    while (true)
+                    {
+                        var r = await ws.ReceiveAsync(new ArraySegment<byte>(buf), cts.Token);
+                        ms.Write(buf, 0, r.Count);
+                        if (r.EndOfMessage) break;
+                    }
+                    var msg = Encoding.UTF8.GetString(ms.ToArray());
+                    try
+                    {
+                        using var docMsg = JsonDocument.Parse(msg);
+                        var root = docMsg.RootElement;
+                        // 检查导航命令返回结果是否有错误
+                        if (root.TryGetProperty("id", out var mid) && mid.GetInt32() == navId)
+                        {
+                            if (root.TryGetProperty("result", out var resObj) &&
+                                resObj.TryGetProperty("errorText", out var errTxt))
+                            {
+                                siteError = errTxt.GetString();
+                                break;
+                            }
+                        }
+                        // 检查是否页面加载完成
+                        if (root.TryGetProperty("method", out var meth))
+                        {
+                            var mStr = meth.GetString();
+                            if (mStr == "Page.loadEventFired" || mStr == "Page.domContentEventFired")
+                            {
+                                loadSuccess = true;
+                                break;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                if (loadSuccess && string.IsNullOrEmpty(siteError))
+                {
+                    res.sites.Add(site);
+                    res.visited++;
+                    Log("warmup.visited", site);
+                }
+                else
+                {
+                    res.failedSites.Add(site);
+                    Log("warmup.failed", $"{site}: {siteError ?? "加载超时"}");
+                }
             }
+
             await ws.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "done", System.Threading.CancellationToken.None);
-            res.ok = true;
+            res.ok = res.visited > 0 && res.failedSites.Count == 0;
+            if (res.failedSites.Count > 0)
+            {
+                res.error = $"部分站点加载未成功: {string.Join(", ", res.failedSites)}";
+            }
             return res;
         }
         catch (Exception e)

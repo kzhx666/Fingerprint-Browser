@@ -118,14 +118,31 @@ public static class FinalFeatures
         var outDir = Path.Combine(Paths.Root, "_benchmark");
         Directory.CreateDirectory(outDir);
         var reportFile = Path.Combine(outDir, "report-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json");
-        var probe = @"C:\\temp\\probe_full.html";
-        if (!File.Exists(probe)) probe = Path.Combine(Paths.Root, "probe_full.html");
+        string probe = "";
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "probe_full.html"),
+            Path.Combine(Paths.Root, "probe_full.html"),
+            Path.Combine(Environment.CurrentDirectory, "probe_full.html"),
+            Path.Combine(Path.GetTempPath(), "probe_full.html"),
+            @"C:\temp\probe_full.html"
+        };
+        foreach (var c in candidates)
+        {
+            if (File.Exists(c)) { probe = c; break; }
+        }
 
         var rep = new BenchmarkReport {
             timestamp = DateTime.Now.ToString("o"),
             seed = profileSeed,
             totalScore = 100
         };
+
+        if (string.IsNullOrEmpty(probe))
+        {
+            rep.ok = false;
+            rep.totalScore = 0;
+            return (false, rep, reportFile, "未找到探针页面文件 probe_full.html，请确保其位于应用目录或实例根目录！");
+        }
 
         var port = 9800 + new Random().Next(100);
         var dataDir = Path.Combine(outDir, "data-" + port);
@@ -276,21 +293,52 @@ using var dataDoc = JsonDocument.Parse(rawStr);
             {
                 var eq = cv.TryGetProperty("equal", out var eqVal) && eqVal.GetBoolean();
                 var pure = cv.TryGetProperty("pureOk", out var pVal) && pVal.GetBoolean();
-                AddCheck("Canvas 双出口一致性", "toDataURL == toBlob", eq ? "一致" : "不一致", eq);
-                AddCheck("Canvas 纯色真实性", "RGB无杂色扰动", pure ? "真实" : "异常", pure);
+                AddCheck("Canvas 双出口一致性", "toDataURL == toBlob", eq ? "一致" : "不一致", eq, 15);
+                AddCheck("Canvas 纯色真实性", "RGB无杂色扰动", pure ? "真实" : "异常", pure, 15);
+            }
+            else
+            {
+                AddCheck("Canvas 双出口一致性", "有效探针输出", "字段缺失", false, 15);
+                AddCheck("Canvas 纯色真实性", "有效探针输出", "字段缺失", false, 15);
             }
 
             if (root.TryGetProperty("webgl", out var gl))
             {
                 var v = gl.TryGetProperty("v", out var vVal) ? vVal.GetString() ?? "" : "";
                 var r = gl.TryGetProperty("r", out var rVal) ? rVal.GetString() ?? "" : "";
-                AddCheck("WebGL 规范标识", "WebKit / WebKit WebGL", $"{v} / {r}", v == "WebKit" && r == "WebKit WebGL");
+                AddCheck("WebGL 规范标识", "WebKit / WebKit WebGL", $"{v} / {r}", v == "WebKit" && r == "WebKit WebGL", 15);
+            }
+            else
+            {
+                AddCheck("WebGL 规范标识", "有效探针输出", "字段缺失", false, 15);
             }
 
             if (root.TryGetProperty("webrtc", out var wr))
             {
                 var priv = wr.TryGetProperty("priv", out var pCnt) ? pCnt.GetInt32() : -1;
-                AddCheck("WebRTC 内网泄露防护", "0 私网候选地址", $"{priv} 个私网IP", priv == 0);
+                AddCheck("WebRTC 内网泄露防护", "0 私网候选地址", $"{priv} 个私网IP", priv == 0, 15);
+            }
+            else
+            {
+                AddCheck("WebRTC 内网泄露防护", "有效探针输出", "字段缺失", false, 15);
+            }
+
+            if (root.TryGetProperty("audio", out var au))
+            {
+                string h = "";
+                if (au.ValueKind == JsonValueKind.String)
+                {
+                    h = au.GetString() ?? "";
+                }
+                else if (au.ValueKind == JsonValueKind.Object && au.TryGetProperty("hash", out var hVal))
+                {
+                    h = hVal.GetString() ?? "";
+                }
+                AddCheck("Audio 硬件音频指纹", "非空音频哈希", string.IsNullOrEmpty(h) ? "空" : h, !string.IsNullOrEmpty(h), 10);
+            }
+            else
+            {
+                AddCheck("Audio 硬件音频指纹", "有效探针输出", "字段缺失", false, 10);
             }
 
             rep.ok = rep.failedCount == 0;

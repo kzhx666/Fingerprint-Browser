@@ -1,6 +1,7 @@
 {
-  "timestamp": "2026-11-11 14:08:39",
+  "timestamp": "2026-11-11 15:35:34",
   "chrome_exe": "D:\\KZBuild\\App\\chrome.exe",
+  "probe_path": "C:\\KZPublish\\kz-profile-manager\\probe_full.html",
   "results": {
     "A": {
       "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
@@ -89,7 +90,7 @@
       "webrtc": {
         "n": 1,
         "c": [
-          "candidate:2828027068 1 udp 2113937151 e5fba640-3bd4-4a69-a3d9-e282aaf031a3.local 17559 typ host generation 0 ufrag 7MuQ network-cost 999"
+          "candidate:2637244688 1 udp 2113937151 f8c3398e-47b4-4410-a745-5c2645fa2f1a.local 17559 typ host generation 0 ufrag xSsa network-cost 999"
         ],
         "priv": 0
       },
@@ -191,7 +192,7 @@
       "webrtc": {
         "n": 1,
         "c": [
-          "candidate:267859791 1 udp 2113937151 ea174004-7d3a-445e-9e3f-e3df33741711.local 21424 typ host generation 0 ufrag EAxX network-cost 999"
+          "candidate:956825116 1 udp 2113937151 5f0503ba-ec97-48f1-b8bb-040b14390e36.local 21424 typ host generation 0 ufrag trOe network-cost 999"
         ],
         "priv": 0
       },
@@ -293,7 +294,7 @@
       "webrtc": {
         "n": 1,
         "c": [
-          "candidate:1717139830 1 udp 2113937151 f60fc37e-8444-4924-b4da-df52a87f1957.local 23546 typ host generation 0 ufrag vSia network-cost 999"
+          "candidate:2577253936 1 udp 2113937151 95e5a805-771c-4d8d-933e-52a78977b98f.local 23546 typ host generation 0 ufrag wtZN network-cost 999"
         ],
         "priv": 0
       },

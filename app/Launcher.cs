@@ -145,9 +145,9 @@ public static class Launcher
                 {
                     args += " --host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost\"";
                 }
-                if (!args.Contains("--force-webrtc-ip-handling-policy"))
+                if (!args.Contains("--webrtc-ip-handling-policy"))
                 {
-                    args += " --force-webrtc-ip-handling-policy=disable_non_proxied_udp";
+                    args += " --webrtc-ip-handling-policy=disable_non_proxied_udp";
                 }
             }
             if (!pre.Error.StartsWith("未配置"))

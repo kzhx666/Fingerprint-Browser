@@ -352,7 +352,7 @@ public static class Fingerprint
             _disabledFeatures.Add("AsyncDns");
             // (2) WebRTC：Preferences 已写 disable_non_proxied_udp(strict)，
             //     这里再禁本地 UDP 收集作双保险，防止 pref 被覆盖时露网卡。
-            a.Add("--force-webrtc-ip-handling-policy=disable_non_proxied_udp");
+            a.Add("--webrtc-ip-handling-policy=disable_non_proxied_udp");
 
             // (3) 全域国内通配分流 (Comprehensive China Direct Bypass):
             // 采用顶级通配规则彻底覆盖所有国内互联网体系 (B站全系/阿里系/腾讯系/百度系/字节系/京东/网易/美团/快手/政企银行及所有.cn域名)

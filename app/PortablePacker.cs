@@ -133,7 +133,7 @@ public static class PortablePacker
 技术支持与源码: https://github.com/kzhx666/Fingerprint-Browser
 ========================================================================
 ";
-                File.WriteAllText(Path.Combine(stageDir, "使用说明.txt"), readme, Encoding.GetEncoding("gbk"));
+                File.WriteAllText(Path.Combine(stageDir, "使用说明.txt"), readme, Encoding.UTF8);
 
                 // 3. 复制选中的实例数据 (方案一：智能过滤垃圾缓存)
                 double instBasePct = 35.0;

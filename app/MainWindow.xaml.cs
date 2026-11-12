@@ -193,10 +193,12 @@ public partial class MainWindow : Window
         _dragStart = e.GetPosition(null);
         _dragging = false;
         _dragRow = null;
-        // 只有按在第一列（拖动把手）才允许拖，点其它地方只是选中
+        // 只有按在拖动把手列才允许拖拽排序（避开复选框列与文字列，点其它地方只是选中）
         var pt = e.GetPosition(Grid);
-        double gripW = Grid.Columns.Count > 0 ? Grid.Columns[0].ActualWidth : 0;
-        if (gripW > 0 && pt.X <= gripW + 4)
+        double col0W = Grid.Columns.Count > 0 ? Grid.Columns[0].ActualWidth : 0; // 复选框列
+        double col1W = Grid.Columns.Count > 1 ? Grid.Columns[1].ActualWidth : 0; // 手柄列
+        // 允许在复选框右边缘至手柄列右侧区域按住拖动
+        if (pt.X >= col0W - 4 && pt.X <= col0W + col1W + 6)
             _dragRow = RowAt(pt);
     }
 

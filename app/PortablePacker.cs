@@ -188,6 +188,7 @@ public static class PortablePacker
 
     static void CopyKernelFiles(string srcDir, string dstDir, CancellationToken ct)
     {
+        Directory.CreateDirectory(dstDir);
         var di = new DirectoryInfo(srcDir);
         foreach (var file in di.GetFiles())
         {

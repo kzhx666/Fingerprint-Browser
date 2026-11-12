@@ -72,6 +72,13 @@ public sealed class Profile
 /// <summary>列表里的一行。</summary>
 public sealed class InstanceRow : INotifyPropertyChanged
 {
+    bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { _isSelected = value; Raise(); }
+    }
+
     public string Name { get; set; } = "";
     public string Tags { get; set; } = "";
     public string Platform { get; set; } = "";

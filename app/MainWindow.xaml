@@ -111,6 +111,8 @@
                                     Margin="0,0,6,0" Click="BtnBatchStop_Click"/>
                             <Button x:Name="BtnTile" Content="⊞ 窗口平铺" Style="{StaticResource Btn}"
                                     Margin="0,0,6,0" ToolTip="网格平铺当前打开的所有窗口" Click="BtnTile_Click"/>
+                            <Button x:Name="BtnPackPortable" Content="📦 一键便携打包" Style="{StaticResource Btn}"
+                                    Margin="0,0,6,0" ToolTip="将选中的实例环境与定制内核一键打包为便携绿色ZIP，可转移到其他电脑直接使用" Click="BtnPackPortable_Click"/>
                         </StackPanel>
 
                         <!-- 搜索框 -->
@@ -148,6 +150,19 @@
                                   SelectionChanged="Grid_SelectionChanged"
                                   Sorting="Grid_Sorting">
                             <DataGrid.Columns>
+                                <!-- 多选复选框列 -->
+                                <DataGridTemplateColumn Width="36" CanUserSort="False" CanUserResize="False">
+                                    <DataGridTemplateColumn.Header>
+                                        <CheckBox x:Name="ChkSelectAll" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  ToolTip="全选 / 取消全选" Click="ChkSelectAll_Click"/>
+                                    </DataGridTemplateColumn.Header>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTemplateColumn Width="32" CanUserSort="False" CanUserResize="False">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>

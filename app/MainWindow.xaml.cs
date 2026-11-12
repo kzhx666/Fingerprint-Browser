@@ -1655,4 +1655,110 @@ public partial class MainWindow : Window
         }
     }
 
+
+    // =========================================================================
+    // 一键便携打包导出处理 (Portable Package Exporter)
+    // =========================================================================
+
+    void ChkSelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox chk)
+        {
+            bool isChecked = chk.IsChecked == true;
+            foreach (var row in _rows)
+            {
+                row.IsSelected = isChecked;
+            }
+        }
+    }
+
+    void BtnPackPortable_Click(object sender, RoutedEventArgs e)
+    {
+        // 1. 获取选中的实例列表 (若未勾选任何复选框，但单选了某行，则默认打包当前选中行)
+        var selectedNames = _rows.Where(x => x.IsSelected).Select(x => x.Name).ToList();
+        if (selectedNames.Count == 0 && Selected is not null)
+        {
+            selectedNames.Add(Selected.Name);
+        }
+
+        if (selectedNames.Count == 0)
+        {
+            var r = MessageBox.Show(
+                "您当前没有勾选任何实例环境。\n\n是否将列表中的【全部实例】连同绿色内核一起完整打包？",
+                "一键便携打包", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (r != MessageBoxResult.Yes) return;
+            selectedNames = _rows.Select(x => x.Name).ToList();
+        }
+
+        if (selectedNames.Count == 0)
+        {
+            MessageBox.Show("当前没有任何可打包的实例环境。", "一键便携打包");
+            return;
+        }
+
+        var confirmMsg =
+            $"准备打包以下 {selectedNames.Count} 个实例环境：\n\n" +
+            $"• {string.Join("\n• ", selectedNames.Take(8))}" +
+            (selectedNames.Count > 8 ? $"\n... 等共 {selectedNames.Count} 个环境" : "") +
+            "\n\n【打包说明 (方案一)】\n" +
+            "1. 包含完整的定制 Chromium 绿色内核 (91项防关联补丁)\n" +
+            "2. 包含实例指纹配置、已登录谷歌账号凭证、已装扩展与书签\n" +
+            "3. 智能过滤垃圾渲染与音视频临时缓存 (大幅缩减体积)\n" +
+            "4. 打包输出为立即可用的 ZIP，解压即可在任意电脑使用\n\n" +
+            "点击「确定」立即开始打包导出。";
+
+        var cr = MessageBox.Show(confirmMsg, "确认一键便携打包", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (cr != MessageBoxResult.OK) return;
+
+        var defaultOutDir = System.IO.Path.Combine(Paths.Root, "_exports");
+        Directory.CreateDirectory(defaultOutDir);
+
+        SetStatus("正在打包便携套件 (请稍候)...");
+        BtnPackPortable.IsEnabled = false;
+
+        _ = Task.Run(async () =>
+        {
+            var (ok, zipPath, err) = await PortablePacker.ExportPortablePackageAsync(
+                selectedNames,
+                defaultOutDir,
+                prog => Dispatcher.Invoke(() => SetStatus($"{prog.Status} ({prog.Percent:0}%)")));
+
+            Dispatcher.Invoke(() =>
+            {
+                BtnPackPortable.IsEnabled = true;
+                if (ok && File.Exists(zipPath))
+                {
+                    var fileInfo = new FileInfo(zipPath);
+                    double mb = fileInfo.Length / 1024.0 / 1024.0;
+                    SetStatus($"便携套件已生成: {fileInfo.Name} ({mb:0.1} MB)");
+
+                    var successMsg =
+                        $"🎉 一键便携套件打包成功！\n\n" +
+                        $"• 导出文件: {fileInfo.Name}\n" +
+                        $"• 文件大小: {mb:0.1} MB\n" +
+                        $"• 包含环境: {selectedNames.Count} 个\n" +
+                        $"• 存放路径:\n  {zipPath}\n\n" +
+                        $"【如何在新电脑上使用】\n" +
+                        $"将该 ZIP 复制到新电脑任意盘符解压，直接双击运行「KZManager.exe」即可，无需任何安装配置！\n\n" +
+                        $"点击「确定」立即打开所在文件夹。";
+
+                    var openFolder = MessageBox.Show(successMsg, "打包完成", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+                    if (openFolder == MessageBoxResult.OK)
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{zipPath}\"");
+                        }
+                        catch { }
+                    }
+                }
+                else
+                {
+                    SetStatus("便携套件打包失败");
+                    MessageBox.Show($"打包失败：{err}", "一键便携打包", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            });
+        });
+    }
+
 }

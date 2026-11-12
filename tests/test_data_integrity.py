@@ -210,13 +210,14 @@ print("  [PASS] 运行中拦截生效，目标快照目录未创建")
         tmp_mock = os.path.join(test_root, "_test_running_mock.py")
         with open(tmp_mock, "w", encoding="utf-8") as f:
             f.write(mock_py)
-        res_mock = subprocess.run([sys.executable, tmp_mock], capture_output=True, text=True, encoding="utf-8")
+        res_mock = subprocess.run([sys.executable, tmp_mock], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res_mock.returncode != 0:
-            failures.append(f"Running rejection test failed: {res_mock.stdout or res_mock.stderr}")
+            failures.append(f"Running rejection test failed: {(res_mock.stdout or '') + (res_mock.stderr or '')}")
         else:
-            for l in res_mock.stdout.splitlines():
-                if l.strip():
-                    print(l.strip())
+            if res_mock.stdout:
+                for l in res_mock.stdout.splitlines():
+                    if l.strip():
+                        print(l.strip())
 
         # ==============================================================
         # 3. 故障注入与安全回滚测试 (自动备份与完整性自愈)
@@ -376,13 +377,14 @@ print("  [PASS] 写入中断防护有效，原子写入保证原文件不受损"
         tmp_imp = os.path.join(test_root, "_test_import_runner.py")
         with open(tmp_imp, "w", encoding="utf-8") as f:
             f.write(import_test_py)
-        res_imp = subprocess.run([sys.executable, tmp_imp], capture_output=True, text=True, encoding="utf-8")
+        res_imp = subprocess.run([sys.executable, tmp_imp], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res_imp.returncode != 0:
-            failures.append(f"Import security test failed: {res_imp.stdout or res_imp.stderr}")
+            failures.append(f"Import security test failed: {(res_imp.stdout or '') + (res_imp.stderr or '')}")
         else:
-            for l in res_imp.stdout.splitlines():
-                if l.strip():
-                    print(l.strip())
+            if res_imp.stdout:
+                for l in res_imp.stdout.splitlines():
+                    if l.strip():
+                        print(l.strip())
 
     finally:
         shutil.rmtree(test_root, ignore_errors=True)

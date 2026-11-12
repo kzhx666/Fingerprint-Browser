@@ -966,6 +966,25 @@ def patch_bookmark_new_tab(src_root: Path, rep: Report):
                     r'  CHECK(node->is_url(), base::NotFatalUntil::M162);',
                     "OnButtonPressed (158)")
                 write_file(path, text)
+            menu_path = src_root / ("chrome/browser/ui/views/bookmarks/"
+                                    "bookmark_menu_delegate.cc")
+            if menu_path.exists():
+                mt = read_file(menu_path)
+                if "bookmarks-current-tab" not in mt:
+                    # Note: base/command_line.h is already included or added by multi-column patch
+                    old_cmd = ('  WindowOpenDisposition initial_disposition =\n'
+                               '      ui::DispositionFromEventFlags(mouse_event_flags);')
+                    new_cmd = ('  WindowOpenDisposition initial_disposition =\n'
+                               '      ui::DispositionFromEventFlags(mouse_event_flags);\n'
+                               '  // PATCH: bookmark folder menu left-click opens in new foreground tab\n'
+                               '  if (initial_disposition == WindowOpenDisposition::kCurrentTab &&\n'
+                               '      !base::CommandLine::ForCurrentProcess()->HasSwitch(\n'
+                               '          "bookmarks-current-tab")) {\n'
+                               '    initial_disposition = WindowOpenDisposition::kNewForegroundTab;\n'
+                               '  }')
+                    if old_cmd in mt:
+                        mt = mt.replace(old_cmd, new_cmd, 1)
+                        write_file(menu_path, mt)
             rep.record(name, "APPLIED")
             return
         if alt_path.exists():

@@ -83,7 +83,23 @@ public static class Json
 public static class Store
 {
     public static AppConfig LoadConfig()
-        => Json.Read<AppConfig>(Paths.ConfigFile) ?? new AppConfig();
+    {
+        var cfg = Json.Read<AppConfig>(Paths.ConfigFile) ?? new AppConfig();
+        // 便携模式自适应探测：如果程序所在目录下有 App\chrome.exe，优先使用本地相对路径
+        var localApp = Path.Combine(Paths.Root, "App", "chrome.exe");
+        if (File.Exists(localApp))
+        {
+            cfg.chromeExe = localApp;
+        }
+        else if (!File.Exists(cfg.chromeExe))
+        {
+            // 回退尝试上级或下级目录中的 App\chrome.exe
+            var siblingApp = Path.Combine(Paths.Root, "..", "App", "chrome.exe");
+            if (File.Exists(siblingApp))
+                cfg.chromeExe = Path.GetFullPath(siblingApp);
+        }
+        return cfg;
+    }
 
     public static void SaveConfig(AppConfig cfg) => Json.Write(Paths.ConfigFile, cfg);
 

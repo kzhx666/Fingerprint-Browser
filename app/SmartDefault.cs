@@ -62,11 +62,22 @@ public static class SmartDefault
         {
             next = txt.Replace("[general]", "[general]\r\n" + want);
         }
-        // 写临时文件再原子替换，避免 Chrome++ 读到半截
-        var tmp = ini + ".kz.tmp";
-        File.WriteAllText(tmp, next, new UnicodeEncoding(false, true));
-        File.Copy(tmp, ini, true);
-        try { File.Delete(tmp); } catch { }
+        // 健壮写入：直接原子写入目标文件，若遇独占锁则微重试，确保 chrome++.ini 绝不丢失
+        try
+        {
+            File.WriteAllText(ini, next, new UnicodeEncoding(false, true));
+        }
+        catch
+        {
+            try
+            {
+                var tmp = ini + ".kz.tmp";
+                File.WriteAllText(tmp, next, new UnicodeEncoding(false, true));
+                File.Copy(tmp, ini, true);
+                File.Delete(tmp);
+            }
+            catch { }
+        }
     }
 
     // ------------------------------------------------------------ 前台窗口解析

@@ -159,6 +159,7 @@ public partial class EditDialog : Window
             ("fp_audio",  "音频噪声",        Combo(new[] { "", "on", "off" }, p.fp_audio)),
             ("fp_fonts",  "字体伪装",        Combo(new[] { "", "on", "off" }, p.fp_fonts)),
             ("webrtc",    "WebRTC IP 防泄漏", Combo(new[] { "", "public", "strict", "off" }, p.webrtc)),
+            ("sidebar",   "右侧侧边栏",       Combo(new[] { "", "on", "off" }, p.sidebar)),
         });
         Grid.SetColumn(right, 2);
         cols.Children.Add(right);
@@ -388,6 +389,7 @@ public partial class EditDialog : Window
         r.fp_audio = Get("fp_audio");
         r.fp_fonts = Get("fp_fonts");
         r.webrtc = Get("webrtc");
+        r.sidebar = Get("sidebar");
         r.geo = Get("geo");
         r.tags = Get("tags");
         r.icon = _iconValue;

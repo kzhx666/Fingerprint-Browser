@@ -478,6 +478,16 @@ public static class Fingerprint
         a.Add("--no-first-run");
         a.Add("--no-default-browser-check");
 
+        // 侧边栏开关与特性控制
+        if (string.Equals(p.sidebar, "off", StringComparison.OrdinalIgnoreCase))
+        {
+            a.Add("--disable-sidebar");
+        }
+        else
+        {
+            a.Add("--enable-sidebar");
+        }
+
         // 上次没正常退出（exit_type=Crashed）时，Chromium 会弹「恢复页面」气泡。
         // 管理器虽然已经改成优雅关闭，但强杀/断电/任务管理器结束任务还是会留下痕迹。
         a.Add("--hide-crash-restore-bubble");

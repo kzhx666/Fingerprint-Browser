@@ -36,6 +36,7 @@ public sealed class Profile
 
     public string node { get; set; } = "";
     public string webrtc { get; set; } = "";
+    public string sidebar { get; set; } = "on";
     public string geo { get; set; } = "";
     /// <summary>实例声明地区：US/HK/JP/... 或中文「美国」。空 = 按名称+时区自动推断。</summary>
     public string region { get; set; } = "";
@@ -64,7 +65,7 @@ public sealed class Profile
         fp_cores = fp_cores, fp_memory = fp_memory, fp_screen = fp_screen,
         fp_dpr = fp_dpr, fp_canvas = fp_canvas, fp_webgl = fp_webgl,
         fp_audio = fp_audio, fp_fonts = fp_fonts, node = node,
-        webrtc = webrtc, geo = geo, region = region, tags = tags, icon = icon, killSwitch = killSwitch, accounts = accounts.Select(x => x.Clone()).ToList(), defaultAccountUrl = defaultAccountUrl, extensionIds = new List<string>(extensionIds),
+        webrtc = webrtc, sidebar = sidebar, geo = geo, region = region, tags = tags, icon = icon, killSwitch = killSwitch, accounts = accounts.Select(x => x.Clone()).ToList(), defaultAccountUrl = defaultAccountUrl, extensionIds = new List<string>(extensionIds),
         extraFields = extraFields
     };
 }

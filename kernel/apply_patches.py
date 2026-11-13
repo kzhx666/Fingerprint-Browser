@@ -4559,62 +4559,132 @@ _KZ_SIDEBAR_LAYOUT = """  LayoutSuperclass<views::View>(this);
 
 
 def patch_vertical_sidebar(src_root: Path, rep: Report):
-    name = "right vertical sidebar dock (--enable-sidebar)"
-    cc = src_root / "chrome/browser/ui/views/frame/browser_view.cc"
-    hh = src_root / "chrome/browser/ui/views/frame/browser_view.h"
-    if not cc.exists() or not hh.exists():
+    """右侧垂直侧边栏 + 自定义站点图标。
+
+    实现代码以资源文件形式保存在 kernel/sidebar/ 下，由本函数按锚点原样注入，
+    避免把几百行 C++ 硬编码进 Python（历史上就是因为硬编码导致与真实源码脱节）。
+    """
+    name = "right vertical sidebar + custom sites"
+    base = "chrome/browser/ui/views/frame"
+    cc = src_root / base / "browser_view.cc"
+    hh = src_root / base / "browser_view.h"
+    ly = src_root / base / "layout/browser_view_tabbed_layout_impl.cc"
+    if not (cc.exists() and hh.exists() and ly.exists()):
         rep.record(name, "SKIPPED", "build files not in tree (fixtures)")
         return
+
+    asset_dir = Path(__file__).resolve().parent / "sidebar"
+
+    def asset(fn: str) -> str:
+        return (asset_dir / fn).read_text(encoding="utf-8")
+
+    if not (asset_dir / "browser_view.cc.ctor.txt").exists():
+        rep.record(name, "SKIPPED", "kernel/sidebar assets missing")
+        return
+
     try:
         src = cc.read_text(encoding="utf-8", errors="replace")
         hdr = hh.read_text(encoding="utf-8", errors="replace")
-        if _KZ_SIDEBAR_MARK in src and "kz_sidebar_" in hdr:
+        lay = ly.read_text(encoding="utf-8", errors="replace")
+
+        if "PATCH:kz-sidebar - right vertical dock sidebar." in src and \
+                "kz_sidebar_" in hdr and "kz_rail" in lay:
             rep.record(name, "ALREADY")
             return
 
-        # --- header: forward decl + members ---
+        # ---------- header ----------
         if "class View;" not in hdr:
             hdr = hdr.replace("namespace views {\nclass LabelButton;",
                               "namespace views {\nclass View;\nclass LabelButton;", 1)
-        anchor_h = "  mutable base::WeakPtrFactory<BrowserView> weak_ptr_factory_{this};"
-        if "kz_sidebar_" not in hdr and anchor_h in hdr:
-            members = (
-                "  // PATCH:kz-sidebar - right vertical dock sidebar.\n"
-                "  raw_ptr<views::View> kz_sidebar_ = nullptr;\n"
-                "  bool kz_sidebar_visible_ = true;\n\n")
-            hdr = hdr.replace(anchor_h, members + anchor_h, 1)
-        hh.write_text(hdr, encoding="utf-8", newline="\n")
+        if "PATCH:kz-sidebar" not in hdr:
+            anchor_h = "  mutable base::WeakPtrFactory<BrowserView> weak_ptr_factory_{this};"
+            if anchor_h in hdr:
+                hdr = hdr.replace(anchor_h,
+                                  asset("browser_view.h.members.txt") + anchor_h, 1)
+            anchor_a = "  Profile* GetProfile() const;"
+            if anchor_a in hdr:
+                hdr = hdr.replace(anchor_a,
+                                  asset("browser_view.h.accessor.txt") + anchor_a, 1)
+            hh.write_text(hdr, encoding="utf-8", newline="\n")
 
-        # --- cc: includes ---
-        inc_anchor = '#include "chrome/browser/ui/browser_commands.h"'
-        if inc_anchor in src and "side_panel/side_panel_ui.h" not in src:
-            src = src.replace(
-                inc_anchor,
-                inc_anchor + "\n"
-                '#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"\n'
-                '#include "chrome/browser/ui/side_panel/side_panel_ui.h"\n'
-                '#include "ui/views/controls/button/label_button.h"\n'
-                '#include "ui/views/layout/box_layout.h"\n'
-                '#include "ui/views/layout/layout_types.h"\n'
-                '#include "ui/views/background.h"\n'
-                '#include "ui/color/color_id.h"\n'
-                '#include "ui/color/color_variant.h"\n'
-                '#include "chrome/app/chrome_command_ids.h"', 1)
+        # ---------- cc includes ----------
+        if "PATCH:kz-sidebar includes" not in src:
+            inc_anchor = '#include "chrome/browser/ui/browser_commands.h"'
+            if inc_anchor in src:
+                incs = "\n".join([
+                    '// PATCH:kz-sidebar includes',
+                    '#include "base/files/file_util.h"',
+                    '#include "base/process/launch.h"',
+                    '#include "base/strings/string_split.h"',
+                    '#include "base/strings/utf_string_conversions.h"',
+                    '#include "base/task/cancelable_task_tracker.h"',
+                    '#include "chrome/app/vector_icons/vector_icons.h"',
+                    '#include "chrome/browser/favicon/favicon_service_factory.h"',
+                    '#include "chrome/browser/profiles/profile.h"',
+                    '#include "chrome/browser/ui/navigator/browser_navigator.h"',
+                    '#include "chrome/browser/ui/navigator/browser_navigator_params.h"',
+                    '#include "chrome/browser/ui/side_panel/side_panel_enums.h"',
+                    '#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"',
+                    '#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"',
+                    '#include "chrome/browser/ui/side_panel/side_panel_ui.h"',
+                    '#include "components/favicon/core/favicon_service.h"',
+                    '#include "components/favicon_base/favicon_types.h"',
+                    '#include "content/public/browser/navigation_controller.h"',
+                    '#include "content/public/browser/web_contents.h"',
+                    '#include "ui/base/models/image_model.h"',
+                    '#include "ui/base/window_open_disposition.h"',
+                    '#include "ui/color/color_id.h"',
+                    '#include "ui/color/color_variant.h"',
+                    '#include "ui/gfx/image/image.h"',
+                    '#include "ui/menus/simple_menu_model.h"',
+                    '#include "ui/views/background.h"',
+                    '#include "ui/views/controls/button/label_button.h"',
+                    '#include "ui/views/controls/menu/menu_runner.h"',
+                    '#include "ui/views/layout/box_layout.h"',
+                    '#include "ui/views/layout/layout_types.h"',
+                    '#include "ui/views/view_class_properties.h"',
+                    '#include "url/gurl.h"',
+                ])
+                src = src.replace(inc_anchor, inc_anchor + "\n" + incs, 1)
 
-        # --- cc: ctor tail ---
-        ctor_anchor = "  animation_controller->set_browser_view(this);\n}\n"
-        if ctor_anchor in src:
-            src = src.replace(ctor_anchor, _KZ_SIDEBAR_CTOR, 1)
+        # ---------- cc helpers ----------
+        if "PATCH:kz-sidebar - custom sidebar sites." not in src:
+            idx = src.find("BrowserView::BrowserView(")
+            if idx > 0:
+                src = src[:idx] + asset("browser_view.cc.helpers.txt") + src[idx:]
 
-        # --- cc: Layout() ---
-        lay_anchor = "  LayoutSuperclass<views::View>(this);\n"
-        if lay_anchor in src and _KZ_SIDEBAR_LAYOUT not in src:
-            src = src.replace(lay_anchor, _KZ_SIDEBAR_LAYOUT, 1)
+        # ---------- cc methods ----------
+        if "void BrowserView::KzOpenSiteUrl(" not in src:
+            idx = src.find("BrowserView::~BrowserView() {")
+            if idx > 0:
+                src = src[:idx] + asset("browser_view.cc.methods.txt") + src[idx:]
+
+        # ---------- cc ctor ----------
+        if "PATCH:kz-sidebar - right vertical dock sidebar." not in src:
+            anchor = "  animation_controller->set_browser_view(this);\n"
+            if anchor in src:
+                src = src.replace(
+                    anchor + "}\n",
+                    anchor + "\n" + asset("browser_view.cc.ctor.txt") + "}\n", 1)
 
         cc.write_text(src, encoding="utf-8", newline="\n")
+
+        # ---------- layout ----------
+        if "kz_rail" not in lay:
+            anchor = "  gfx::Insets shadow_overlay_insets;"
+            if anchor in lay:
+                lay = lay.replace(anchor,
+                                  asset("layout.rail.txt") + anchor, 1)
+            if '#include "chrome/browser/ui/views/frame/browser_view.h"' not in lay:
+                a2 = '#include "chrome/browser/ui/views/frame/layout/browser_view_tabbed_layout_impl.h"'
+                if a2 in lay:
+                    lay = lay.replace(a2, a2 + '\n#include "chrome/browser/ui/views/frame/browser_view.h"', 1)
+            ly.write_text(lay, encoding="utf-8", newline="\n")
+
         rep.record(name, "APPLIED")
     except Exception as e:  # noqa: BLE001
         rep.record(name, "FAILED", str(e))
+
 
 
 ALL_PATCHES = [

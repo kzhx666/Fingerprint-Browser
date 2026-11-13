@@ -1,0 +1,122 @@
+  // PATCH:kz-sidebar - right vertical dock sidebar.
+  // The rail is permanent while --enable-sidebar is set: its last button
+  // toggles the side panel, so collapsing can never strand the user without
+  // an expand affordance.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch("enable-sidebar")) {
+    auto* dock = AddChildView(std::make_unique<views::View>());
+    auto* dock_layout = dock->SetLayoutManager(
+        std::make_unique<views::BoxLayout>(
+            views::BoxLayout::Orientation::kVertical,
+            gfx::Insets::TLBR(8, 0, 8, 0), 4));
+    dock_layout->set_cross_axis_alignment(
+        views::BoxLayout::CrossAxisAlignment::kCenter);
+    dock->SetBackground(views::CreateSolidBackground(
+        ui::ColorVariant(ui::kColorWindowBackground)));
+
+    // Drive the side panel API directly: ExecuteCommand(IDC_...) does not map
+    // to these panels in this Chromium revision.
+    auto add_panel_button = [&](const gfx::VectorIcon& icon,
+                                SidePanelEntryId entry_id,
+                                const std::u16string& tooltip) {
+      auto* btn = dock->AddChildView(std::make_unique<views::LabelButton>(
+          base::BindRepeating(
+              [](BrowserView* self, SidePanelEntryId id) {
+                if (auto* ui = SidePanelUI::From(self->browser())) {
+                  ui->Show(id);
+                }
+              },
+              base::Unretained(this), entry_id),
+          std::u16string()));
+      btn->SetImageModel(views::Button::STATE_NORMAL,
+                         ui::ImageModel::FromVectorIcon(
+                             icon, ui::kColorIcon, 18));
+      btn->SetPreferredSize(gfx::Size(36, 32));
+      btn->SetTooltipText(tooltip);
+      return btn;
+    };
+
+    add_panel_button(kStarIcon, SidePanelEntryId::kBookmarks, u"\u4E66\u7B7E");
+    add_panel_button(kMenuBookIcon, SidePanelEntryId::kReadingList,
+                     u"\u9605\u8BFB\u5217\u8868");
+    add_panel_button(kHistoryIcon, SidePanelEntryId::kHistoryClusters,
+                     u"\u5386\u53F2\u8BB0\u5F55");
+
+    // Downloads is a full page, not a side panel entry.
+    auto* downloads_btn = dock->AddChildView(std::make_unique<views::LabelButton>(
+        base::BindRepeating(
+            [](BrowserView* self) {
+              chrome::ExecuteCommand(self->browser(), IDC_SHOW_DOWNLOADS);
+            },
+            base::Unretained(this)),
+        std::u16string()));
+    downloads_btn->SetImageModel(views::Button::STATE_NORMAL,
+                                 ui::ImageModel::FromVectorIcon(
+                                     kDownloadIcon, ui::kColorIcon, 18));
+    downloads_btn->SetPreferredSize(gfx::Size(36, 32));
+    downloads_btn->SetTooltipText(u"\u4E0B\u8F7D");
+
+    auto* toggle = dock->AddChildView(std::make_unique<views::LabelButton>(
+        base::BindRepeating(
+            [](BrowserView* self) {
+              if (auto* ui = SidePanelUI::From(self->browser())) {
+                ui->Toggle(SidePanelEntryKey(SidePanelEntryId::kBookmarks),
+                           SidePanelOpenTrigger::kAppMenu);
+              }
+            },
+            base::Unretained(this)),
+        std::u16string()));
+    toggle->SetImageModel(views::Button::STATE_NORMAL,
+                          ui::ImageModel::FromVectorIcon(
+                              kChevronRightIcon, ui::kColorIcon, 18));
+    toggle->SetPreferredSize(gfx::Size(36, 32));
+    toggle->SetTooltipText(u"\u5C55\u5F00/\u6536\u8D77\u4FA7\u8FB9\u680F");
+
+    // ---- custom sites: embedded web panel + per-site rail buttons ----
+
+    for (const auto& site : LoadKzSites(GetProfile())) {
+      KzAddSiteButton(dock, site.first, site.second);
+    }
+
+    auto* add_site = dock->AddChildView(std::make_unique<views::LabelButton>(
+        base::BindRepeating(
+            [](BrowserView* self) {
+              // Auto-detect: take the current page's title and URL, no dialog.
+              content::WebContents* contents = self->GetActiveWebContents();
+              if (!contents) {
+                return;
+              }
+              const GURL url = contents->GetLastCommittedURL();
+              if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS()) {
+                return;
+              }
+              std::string name = base::UTF16ToUTF8(contents->GetTitle());
+              if (name.empty()) {
+                name = url.host();
+              }
+              // Avoid duplicates.
+              for (const auto& site : LoadKzSites(self->GetProfile())) {
+                if (site.second == url.spec()) {
+                  self->KzOpenSiteUrl(site.second);
+                  return;
+                }
+              }
+              auto sites = LoadKzSites(self->GetProfile());
+              sites.emplace_back(name, url.spec());
+              if (!SaveKzSites(self->GetProfile(), sites)) {
+                return;
+              }
+              if (self->kz_sidebar_) {
+                self->KzAddSiteButton(self->kz_sidebar_, name, url.spec());
+                self->kz_sidebar_->DeprecatedLayoutImmediately();
+              }
+            },
+            base::Unretained(this)),
+        std::u16string()));
+    add_site->SetImageModel(views::Button::STATE_NORMAL,
+                            ui::ImageModel::FromVectorIcon(
+                                kAddIcon, ui::kColorIcon, 18));
+    add_site->SetPreferredSize(gfx::Size(36, 32));
+    add_site->SetTooltipText(u"\u628A\u5F53\u524D\u7F51\u9875\u6DFB\u52A0\u5230\u4FA7\u8FB9\u680F");
+
+    kz_sidebar_ = dock;
+  }

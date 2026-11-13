@@ -1,0 +1,4 @@
+  // PATCH:kz-sidebar - the right vertical rail, or nullptr when
+  // --enable-sidebar is not set.
+  views::View* kz_sidebar() const { return kz_sidebar_; }
+

@@ -1,0 +1,8 @@
+  // PATCH:kz-sidebar - right vertical dock sidebar.
+  raw_ptr<views::View> kz_sidebar_ = nullptr;
+  void KzOpenSiteUrl(const std::string& url);
+  base::CancelableTaskTracker kz_favicon_tracker_;
+  void KzAddSiteButton(views::View* dock,
+                       const std::string& name,
+                       const std::string& url);
+

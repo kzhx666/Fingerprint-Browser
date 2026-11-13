@@ -1,0 +1,57 @@
+// PATCH:kz-sidebar - custom sidebar sites.
+// Stored as one "name<TAB>url" line per site inside the profile directory, so
+// no pref registration or JSON schema migration is needed.
+namespace {
+
+constexpr char kKzSitesFileName[] = "kz_sidebar_sites.txt";
+
+base::FilePath KzSitesFilePath(Profile* profile) {
+  // Accept the file either next to the profile dir or in its parent, so both
+  // "<user-data-dir>/kz_sidebar_sites.txt" and "<user-data-dir>/Default/..."
+  // work.
+  const base::FilePath primary =
+      profile->GetPath().AppendASCII(kKzSitesFileName);
+  if (base::PathExists(primary)) {
+    return primary;
+  }
+  const base::FilePath parent =
+      profile->GetPath().DirName().AppendASCII(kKzSitesFileName);
+  if (base::PathExists(parent)) {
+    return parent;
+  }
+  return primary;
+}
+
+std::vector<std::pair<std::string, std::string>> LoadKzSites(Profile* profile) {
+  std::vector<std::pair<std::string, std::string>> sites;
+  std::string data;
+  if (!base::ReadFileToString(KzSitesFilePath(profile), &data)) {
+    return sites;
+  }
+  for (const auto& line : base::SplitString(
+           data, "\n", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {
+    const size_t tab = line.find('\t');
+    if (tab == std::string::npos) {
+      continue;
+    }
+    sites.emplace_back(line.substr(0, tab), line.substr(tab + 1));
+  }
+  return sites;
+}
+
+// PATCH:kz-sidebar - rewrite the whole site list (creates the directory).
+bool SaveKzSites(Profile* profile,
+                 const std::vector<std::pair<std::string, std::string>>& sites) {
+  const base::FilePath file = KzSitesFilePath(profile);
+  if (!base::CreateDirectory(file.DirName())) {
+    return false;
+  }
+  std::string out;
+  for (const auto& site : sites) {
+    out += site.first + "\t" + site.second + "\n";
+  }
+  return base::WriteFile(file, out);
+}
+
+
+}  // namespace

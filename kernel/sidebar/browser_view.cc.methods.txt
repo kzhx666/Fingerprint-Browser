@@ -1,0 +1,70 @@
+// PATCH:kz-sidebar - load a custom site into the embedded panel.
+void BrowserView::KzOpenSiteUrl(const std::string& url) {
+  // Bookmark-style: open in a new foreground tab, no embedded panel.
+  const GURL gurl(url);
+  if (!gurl.is_valid()) {
+    return;
+  }
+  NavigateParams params(browser(), gurl, ui::PAGE_TRANSITION_TYPED);
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  Navigate(&params);
+}
+
+// PATCH:kz-sidebar - append one rail button for a custom site.
+void BrowserView::KzAddSiteButton(views::View* dock,
+                                  const std::string& name,
+                                  const std::string& url) {
+  if (!dock) {
+    return;
+  }
+  // Two-phase: the remove callback needs the button pointer, so create it
+  // first and fill the pointer in afterwards.
+  auto btn_slot = std::make_shared<views::View*>(nullptr);
+  std::unique_ptr<views::View> btn_owned = std::make_unique<KzSiteButton>(
+      base::BindRepeating(&BrowserView::KzOpenSiteUrl, base::Unretained(this),
+                          url),
+      base::BindRepeating(
+          [](BrowserView* self, std::string site_name, std::string site_url) {
+            const base::CommandLine* cl = base::CommandLine::ForCurrentProcess();
+            if (!cl->HasSwitch("kz-manager")) {
+              return;
+            }
+            base::CommandLine cmd(cl->GetSwitchValuePath("kz-manager"));
+            cmd.AppendSwitchPath("edit-sidebar-site",
+                                 self->GetProfile()->GetPath());
+            cmd.AppendSwitchASCII("site-url", site_url);
+            cmd.AppendSwitchASCII("site-name", site_name);
+            base::LaunchOptions options;
+            options.start_hidden = true;
+            base::LaunchProcess(cmd, options);
+          },
+          base::Unretained(this), name, url),
+      base::BindRepeating(
+          [](BrowserView* self, std::shared_ptr<views::View*> slot,
+             views::View* dock_view, std::string site_url) {
+            views::View* button = slot ? *slot : nullptr;
+            RemoveKzSite(self->GetProfile(), site_url);
+            // Defer removal: we are inside the button's own menu callback.
+            base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+                FROM_HERE,
+                base::BindOnce(
+                    [](views::View* d, views::View* b) {
+                      if (d && b) {
+                        d->RemoveChildViewT(b);
+                        d->DeprecatedLayoutImmediately();
+                      }
+                    },
+                    base::Unretained(dock_view), base::Unretained(button)));
+          },
+          base::Unretained(this), btn_slot, dock, url));
+  auto* btn = dock->AddChildView(std::move(btn_owned));
+  *btn_slot = btn;
+  auto* label_btn = static_cast<views::LabelButton*>(btn);
+  label_btn->SetImageModel(views::Button::STATE_NORMAL,
+                           ui::ImageModel::FromVectorIcon(
+                               kGlobeIcon, ui::kColorIcon, 18));
+  label_btn->SetPreferredSize(gfx::Size(36, 32));
+  label_btn->SetTooltipText(base::UTF8ToUTF16(name));
+  KzApplyFavicon(this, label_btn, &kz_favicon_tracker_, GURL(url));
+}
+

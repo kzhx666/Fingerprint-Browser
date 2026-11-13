@@ -1,0 +1,22 @@
+  // PATCH:kz-sidebar - reserve a real strip for the vertical rail. The rail is
+  // laid out here (not overlaid) so the web contents surface can never cover it
+  // and mouse events always reach its buttons.
+
+  if (views().browser_view) {
+    BrowserView* const kz_browser_view =
+        static_cast<BrowserView*>(views().browser_view);
+    views::View* const kz_rail = kz_browser_view->kz_sidebar();
+    if (kz_rail && kz_rail->GetVisible()) {
+      constexpr int kKzRailWidth = 40;
+      if (params.visual_client_area.width() > kKzRailWidth * 2) {
+        const gfx::Rect kz_rail_bounds(
+            params.visual_client_area.right() - kKzRailWidth,
+            params.visual_client_area.y(), kKzRailWidth,
+            params.visual_client_area.height());
+        layout.AddChild(kz_rail, kz_rail_bounds);
+        params.InsetHorizontal(kKzRailWidth, /*leading=*/false);
+      }
+    }
+  }
+
+

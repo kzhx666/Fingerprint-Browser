@@ -143,6 +143,13 @@ public sealed class AppConfig
     public bool perInstanceDns { get; set; } = false;
     /// <summary>9. 全局断线熔断器：任何代理异常严禁直连裸奔。</summary>
     public bool globalKillSwitch { get; set; } = false;
+
+    /// <summary>
+    /// 外部链接的安全路由目标实例（--route-url）。
+    /// 前台没有 chrome 窗口时（例如从微信点链接），落到这个实例。
+    /// 空 = 上一次前台的实例，再空 = 第一个实例。
+    /// </summary>
+    public string defaultInstance { get; set; } = "";
 }
 
 

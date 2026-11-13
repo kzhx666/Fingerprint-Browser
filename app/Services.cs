@@ -329,6 +329,11 @@ public static class Fingerprint
         var _disabledFeatures = new List<string>();
         if (!string.IsNullOrEmpty(p.name)) a.Add($"--profile-name=\"{p.name}\"");
 
+        // 侧边栏 "+" 需要能调起管理器的添加框
+        var mgrPath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        if (!string.IsNullOrEmpty(mgrPath) && System.IO.File.Exists(mgrPath))
+            a.Add($"--kz-manager=\"{mgrPath}\"");
+
         // 主控浏览器只用来共享数据，不做任何伪装
         bool isMaster = string.Equals(p.role, "master", StringComparison.OrdinalIgnoreCase);
         if (!isMaster)

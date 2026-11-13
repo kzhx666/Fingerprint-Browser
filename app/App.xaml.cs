@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 
 namespace KZManager;
@@ -64,6 +65,66 @@ public partial class App : Application
             LocalApi.Start(port);
             return;   // 不创建 MainWindow
         }
+        // ---- 命令行模式：--edit-sidebar-site ----
+        // 侧边栏图标右键「编辑」调起：预填当前名称和网址，改完写回。
+        var editIdx = Array.FindIndex(argv, x => x.StartsWith("--edit-sidebar-site="));
+        if (editIdx >= 0)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var profileDir = argv[editIdx].Substring("--edit-sidebar-site=".Length).Trim('"');
+            var siteUrl = "";
+            foreach (var a in argv)
+                if (a.StartsWith("--site-url=")) siteUrl = a.Substring("--site-url=".Length);
+
+            // 与内核一致的查找顺序：profile 目录 -> 其父目录
+            string? file = null;
+            var p1 = System.IO.Path.Combine(profileDir, "kz_sidebar_sites.txt");
+            var parent = System.IO.Path.GetDirectoryName(profileDir) ?? profileDir;
+            var p2 = System.IO.Path.Combine(parent, "kz_sidebar_sites.txt");
+            if (System.IO.File.Exists(p1)) file = p1;
+            else if (System.IO.File.Exists(p2)) file = p2;
+
+            if (file == null)
+            {
+                MessageBox.Show("找不到侧边栏站点文件。", "编辑侧边栏网页",
+                                MessageBoxButton.OK, MessageBoxImage.Warning);
+                Shutdown(1);
+                return;
+            }
+
+            var lines = new List<string>(System.IO.File.ReadAllLines(file));
+            int idxLine = -1;
+            string curName = "", curUrl = "";
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var t = lines[i].Split('\t');
+                if (t.Length >= 2 && t[1] == siteUrl)
+                {
+                    idxLine = i; curName = t[0]; curUrl = t[1]; break;
+                }
+            }
+            if (idxLine < 0)
+            {
+                MessageBox.Show("这个图标已经不在站点文件里了。", "编辑侧边栏网页",
+                                MessageBoxButton.OK, MessageBoxImage.Warning);
+                Shutdown(1);
+                return;
+            }
+
+            var newName = InputDialog.Ask(null!, "编辑侧边栏网页", "名称", curName);
+            if (string.IsNullOrWhiteSpace(newName)) { Shutdown(0); return; }
+            var newUrl = InputDialog.Ask(null!, "编辑侧边栏网页", "网址", curUrl);
+            if (string.IsNullOrWhiteSpace(newUrl)) { Shutdown(0); return; }
+
+            lines[idxLine] = newName.Trim() + "\t" + newUrl.Trim();
+            System.IO.File.WriteAllText(file, string.Join("\n", lines) + "\n",
+                                        new System.Text.UTF8Encoding(false));
+            MessageBox.Show("已保存。\n\n重新打开该实例（或新开窗口）后生效。",
+                            "编辑侧边栏网页", MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown(0);
+            return;
+        }
+
         // ---- 命令行模式：--add-sidebar-site "<profile data dir>" ----
         // 由浏览器侧边栏的 "+" 调起：弹输入框，写入该实例的
         // kz_sidebar_sites.txt（name<TAB>url 每行一条）。

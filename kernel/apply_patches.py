@@ -4687,7 +4687,80 @@ def patch_vertical_sidebar(src_root: Path, rep: Report):
 
 
 
+
+def patch_portable_key(src_root: Path, rep: Report):
+    """便携密钥（跨机器可搬）支持。
+
+    profile 的 os_crypt.encrypted_key 形如 base64("DPAPI" + payload)。
+    原版 Chromium 一律把 payload 当 DPAPI blob；本项目额外支持「payload 正好
+    32 字节 = AES-256-GCM 裸密钥」的便携形式。
+
+    两处必须同时改，否则读取和启动时的初始化会不一致，导致密钥被重新生成、
+    已有 cookie 全部作废：
+      1. os_crypt_win.cc::InitWithExistingKey   —— 启动时不要重建密钥
+      2. dpapi_key_provider.cc::GetKeyInternal  —— 取密钥时直接用裸密钥
+    """
+    name = "portable profile key"
+    oswin = src_root / "components/os_crypt/async/browser/os_crypt_win.cc"
+    prov = src_root / "components/os_crypt/async/browser/dpapi_key_provider.cc"
+    if not (oswin.exists() and prov.exists()):
+        rep.record(name, "SKIPPED", "os_crypt sources not in tree")
+        return
+
+    try:
+        a = oswin.read_text(encoding="utf-8", errors="replace")
+        b = prov.read_text(encoding="utf-8", errors="replace")
+        if "kz-portable-key" in a and "kz-portable-key" in b:
+            rep.record(name, "ALREADY")
+            return
+
+        anchor_a = """  const std::string encrypted_key =
+      encrypted_key_with_header.substr(sizeof(kDPAPIKeyPrefix) - 1);
+  std::string key;
+  if (!DecryptStringWithDPAPI(encrypted_key, &key)) {"""
+        new_a = """  const std::string encrypted_key =
+      encrypted_key_with_header.substr(sizeof(kDPAPIKeyPrefix) - 1);
+
+  // PATCH:kz-portable-key - a bare 32-byte payload after the header is a
+  // portable (machine/user independent) AES key. Accept it as-is instead of
+  // trying DPAPI, otherwise Init() would regenerate the key and orphan every
+  // existing cookie.
+  if (encrypted_key.size() == Encryptor::Key::kAES256GCMKeySize) {
+    return InitResult::kSuccess;
+  }
+
+  std::string key;
+  if (!DecryptStringWithDPAPI(encrypted_key, &key)) {"""
+        if "kz-portable-key" not in a:
+            if anchor_a not in a:
+                rep.record(name, "FAILED", "os_crypt_win.cc anchor missing")
+                return
+            a = a.replace(anchor_a, new_a, 1)
+            oswin.write_text(a, encoding="utf-8", newline="\n")
+
+        anchor_b = "  auto decrypted_key = DecryptKeyWithDPAPI(encrypted_key_data);"
+        new_b = """  // PATCH:kz-portable-key - portable form: the payload IS the AES key.
+  if (encrypted_key_data.size() == Encryptor::Key::kAES256GCMKeySize) {
+    return Encryptor::Key(encrypted_key_data,
+                          mojom::Algorithm::kAES256GCM);
+  }
+
+  auto decrypted_key = DecryptKeyWithDPAPI(encrypted_key_data);"""
+        if "kz-portable-key" not in b:
+            if anchor_b not in b:
+                rep.record(name, "FAILED", "dpapi_key_provider.cc anchor missing")
+                return
+            b = b.replace(anchor_b, new_b, 1)
+            prov.write_text(b, encoding="utf-8", newline="\n")
+
+        rep.record(name, "APPLIED")
+    except Exception as e:  # noqa: BLE001
+        rep.record(name, "FAILED", str(e))
+
+
+
 ALL_PATCHES = [
+    patch_portable_key,
     patch_vertical_sidebar,
     patch_fingerprint_helper,
     patch_multirow_bookmarks,

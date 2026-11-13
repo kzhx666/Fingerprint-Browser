@@ -4457,7 +4457,168 @@ _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import patches_v11
 import patches_v12
 
+# ------------------------------------------------------
+# 92. Right vertical sidebar dock (--enable-sidebar)
+# ------------------------------------------------------
+
+_KZ_SIDEBAR_MARK = "// PATCH:kz-sidebar - right vertical dock sidebar."
+
+_KZ_SIDEBAR_CTOR = """  animation_controller->set_browser_view(this);
+
+  // PATCH:kz-sidebar-open - auto-open the right side panel so the reserved
+  // strip is laid out by Chromium itself.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch("enable-sidebar")) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](BrowserWindowInterface* b) {
+              if (auto* ui = SidePanelUI::From(b)) {
+                ui->Show(SidePanelEntryId::kBookmarks);
+              }
+            },
+            browser_));
+  }
+
+  // PATCH:kz-sidebar - right vertical dock sidebar.
+  // Marked kViewIgnoredByLayoutKey so BrowserViewLayout never touches it and no
+  // existing view is shifted; positioned manually at the end of Layout().
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch("enable-sidebar")) {
+    auto* dock = AddChildView(std::make_unique<views::View>());
+    dock->SetProperty(views::kViewIgnoredByLayoutKey, true);
+    auto* dock_layout = dock->SetLayoutManager(
+        std::make_unique<views::BoxLayout>(
+            views::BoxLayout::Orientation::kVertical,
+            gfx::Insets::TLBR(6, 2, 6, 2), 4));
+    dock_layout->set_cross_axis_alignment(
+        views::BoxLayout::CrossAxisAlignment::kCenter);
+    dock->SetBackground(views::CreateSolidBackground(
+        ui::ColorVariant(ui::kColorWindowBackground)));
+
+    auto add_dock_button = [&](std::u16string_view text, int command,
+                               const std::u16string& tooltip) {
+      auto* btn = dock->AddChildView(std::make_unique<views::LabelButton>(
+          base::BindRepeating(
+              [](BrowserView* self, int cmd) {
+                chrome::ExecuteCommand(self->browser(), cmd);
+              },
+              base::Unretained(this), command),
+          text));
+      btn->SetPreferredSize(gfx::Size(34, 30));
+      btn->SetTooltipText(tooltip);
+      return btn;
+    };
+
+    add_dock_button(u"\u2605", IDC_SHOW_BOOKMARK_SIDE_PANEL,
+                    u"\u4E66\u7B7E");
+    add_dock_button(u"\u25A4", IDC_READING_LIST_MENU_SHOW_UI,
+                    u"\u9605\u8BFB\u5217\u8868");
+    add_dock_button(u"\u25F7", IDC_SHOW_HISTORY_SIDE_PANEL,
+                    u"\u5386\u53F2\u8BB0\u5F55");
+    add_dock_button(u"\u2913", IDC_SHOW_DOWNLOADS, u"\u4E0B\u8F7D");
+
+    auto* toggle = dock->AddChildView(std::make_unique<views::LabelButton>(
+        base::BindRepeating(
+            [](BrowserView* self) {
+              self->kz_sidebar_visible_ = !self->kz_sidebar_visible_;
+              if (self->kz_sidebar_) {
+                self->kz_sidebar_->SetVisible(self->kz_sidebar_visible_);
+              }
+              self->InvalidateLayout();
+            },
+            base::Unretained(this)),
+        u"\u00BB"));
+    toggle->SetPreferredSize(gfx::Size(34, 30));
+    toggle->SetTooltipText(u"\u6536\u8D77/\u5C55\u5F00\u4FA7\u8FB9\u680F");
+
+    kz_sidebar_ = dock;
+  }
+}
+"""
+
+_KZ_SIDEBAR_LAYOUT = """  LayoutSuperclass<views::View>(this);
+
+  // PATCH:kz-sidebar - dock the vertical bar against the right edge of the
+  // content area. SetBounds also schedules the dock's own child layout.
+  if (kz_sidebar_ && kz_sidebar_->GetVisible() && multi_contents_view_) {
+    const gfx::Rect content_bounds = multi_contents_view_->bounds();
+    constexpr int kDockWidth = 40;
+    // Reserve a real 40px strip: shrink the web contents instead of
+    // overlaying it, so the renderer surface never covers the dock.
+    // Guard against tiny windows so the content width never goes negative.
+    if (content_bounds.width() > kDockWidth * 2 &&
+        content_bounds.height() > 0) {
+      multi_contents_view_->SetBounds(content_bounds.x(), content_bounds.y(),
+                                      content_bounds.width() - kDockWidth,
+                                      content_bounds.height());
+      kz_sidebar_->SetBounds(content_bounds.right() - kDockWidth,
+                             content_bounds.y(), kDockWidth,
+                             content_bounds.height());
+    }
+  }
+"""
+
+
+def patch_vertical_sidebar(src_root: Path, rep: Report):
+    name = "right vertical sidebar dock (--enable-sidebar)"
+    cc = src_root / "chrome/browser/ui/views/frame/browser_view.cc"
+    hh = src_root / "chrome/browser/ui/views/frame/browser_view.h"
+    if not cc.exists() or not hh.exists():
+        rep.record(name, "SKIPPED", "build files not in tree (fixtures)")
+        return
+    try:
+        src = cc.read_text(encoding="utf-8", errors="replace")
+        hdr = hh.read_text(encoding="utf-8", errors="replace")
+        if _KZ_SIDEBAR_MARK in src and "kz_sidebar_" in hdr:
+            rep.record(name, "ALREADY")
+            return
+
+        # --- header: forward decl + members ---
+        if "class View;" not in hdr:
+            hdr = hdr.replace("namespace views {\nclass LabelButton;",
+                              "namespace views {\nclass View;\nclass LabelButton;", 1)
+        anchor_h = "  mutable base::WeakPtrFactory<BrowserView> weak_ptr_factory_{this};"
+        if "kz_sidebar_" not in hdr and anchor_h in hdr:
+            members = (
+                "  // PATCH:kz-sidebar - right vertical dock sidebar.\n"
+                "  raw_ptr<views::View> kz_sidebar_ = nullptr;\n"
+                "  bool kz_sidebar_visible_ = true;\n\n")
+            hdr = hdr.replace(anchor_h, members + anchor_h, 1)
+        hh.write_text(hdr, encoding="utf-8", newline="\n")
+
+        # --- cc: includes ---
+        inc_anchor = '#include "chrome/browser/ui/browser_commands.h"'
+        if inc_anchor in src and "side_panel/side_panel_ui.h" not in src:
+            src = src.replace(
+                inc_anchor,
+                inc_anchor + "\n"
+                '#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"\n'
+                '#include "chrome/browser/ui/side_panel/side_panel_ui.h"\n'
+                '#include "ui/views/controls/button/label_button.h"\n'
+                '#include "ui/views/layout/box_layout.h"\n'
+                '#include "ui/views/layout/layout_types.h"\n'
+                '#include "ui/views/background.h"\n'
+                '#include "ui/color/color_id.h"\n'
+                '#include "ui/color/color_variant.h"\n'
+                '#include "chrome/app/chrome_command_ids.h"', 1)
+
+        # --- cc: ctor tail ---
+        ctor_anchor = "  animation_controller->set_browser_view(this);\n}\n"
+        if ctor_anchor in src:
+            src = src.replace(ctor_anchor, _KZ_SIDEBAR_CTOR, 1)
+
+        # --- cc: Layout() ---
+        lay_anchor = "  LayoutSuperclass<views::View>(this);\n"
+        if lay_anchor in src and _KZ_SIDEBAR_LAYOUT not in src:
+            src = src.replace(lay_anchor, _KZ_SIDEBAR_LAYOUT, 1)
+
+        cc.write_text(src, encoding="utf-8", newline="\n")
+        rep.record(name, "APPLIED")
+    except Exception as e:  # noqa: BLE001
+        rep.record(name, "FAILED", str(e))
+
+
 ALL_PATCHES = [
+    patch_vertical_sidebar,
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
     patch_bookmark_new_tab,

@@ -29,7 +29,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_CHROME = Path(os.environ.get("CHROME_EXE", r"D:\KZBuild\App\chrome.exe"))
-DEFAULT_PROBE = REPO / "probe_full.html"
+DEFAULT_PROBE = REPO / "tests" / "probe_full.html"
 
 def find_probe(candidate=None):
     if candidate and Path(candidate).exists():

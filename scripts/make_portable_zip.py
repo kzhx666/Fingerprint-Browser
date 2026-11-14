@@ -12,7 +12,7 @@ import zipfile
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 APP_SOURCE = Path(r"D:\KZBuild\App")
 MANAGER_EXE = Path(r"D:\KZProfiles\KZManager.exe")
 OUTPUT_DIR = Path(r"D:\KZDist")
@@ -81,10 +81,18 @@ def setup_portable_structure():
     (STAGE_DIR / "_snapshots").mkdir(exist_ok=True)
     
     # 复制探针与工具
-    for item in ["probe_full.html", "指纹自检.html", "node-proxy.py", "snapshot.py", "backup.py", "sync-data.py"]:
-        src = REPO_ROOT / item
+    # 源文件已按目录归档，打包时统一平铺到便携版根目录
+    for src_rel, dest_name in [
+        ("tests/probe_full.html", "probe_full.html"),
+        ("tools/指纹自检.html", "指纹自检.html"),
+        ("scripts/node-proxy.py", "node-proxy.py"),
+        ("scripts/snapshot.py", "snapshot.py"),
+        ("scripts/backup.py", "backup.py"),
+        ("scripts/sync-data.py", "sync-data.py"),
+    ]:
+        src = REPO_ROOT / src_rel
         if src.exists():
-            shutil.copy2(src, STAGE_DIR / item)
+            shutil.copy2(src, STAGE_DIR / dest_name)
 
     # 便携版默认 manager.json (相对路径优先)
     manager_cfg = {

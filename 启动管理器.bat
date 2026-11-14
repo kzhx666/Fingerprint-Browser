@@ -1,10 +1,16 @@
 @echo off
 chcp 65001 >nul
-title KZ ¶à¿ª¹ÜÀíÆ÷
+title KZ å¤šå¼€ç®¡ç†å™¨
 cd /d "%~dp0"
+
 if exist "KZManager.exe" (
     start "" "KZManager.exe"
-) else (
-    echo ÕÒ²»µ½ KZManager.exe£¬»ØÍËµ½ PowerShell °æ...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "manager.ps1"
+    exit /b 0
 )
+if exist "out\KZManager.exe" (
+    start "" "out\KZManager.exe"
+    exit /b 0
+)
+
+echo æœªæ‰¾åˆ° KZManager.exeï¼Œå›é€€åˆ° PowerShell ç‰ˆ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\manager.ps1"

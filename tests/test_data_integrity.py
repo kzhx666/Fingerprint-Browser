@@ -33,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
 REPO = Path(__file__).resolve().parent.parent
 
 def run_cmd(script, args, env=None):
-    cmd = [sys.executable, str(REPO / script)] + args
+    cmd = [sys.executable, str(REPO / "scripts" / script)] + args
     res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return res
 
@@ -168,7 +168,7 @@ def main():
         # 注入模拟运行：我们写一个测试脚本调用 snapshot 与 backup 的 is_running 模拟
         mock_py = f'''
 import sys, os
-sys.path.insert(0, r"{str(REPO)}")
+sys.path.insert(0, r"{str(REPO / 'scripts')}")
 os.environ["KZ_ROOT"] = r"{test_root}"
 import snapshot, backup
 
@@ -292,7 +292,7 @@ print("  [PASS] 运行中拦截生效，目标快照目录未创建")
         # 模拟 C# ProductFeatures.ImportBundle 核心安全逻辑并在 Python 中测试
         import_test_py = f'''
 import sys, os, json
-sys.path.insert(0, r"{str(REPO)}")
+sys.path.insert(0, r"{str(REPO / 'scripts')}")
 import snapshot
 
 root = r"{test_root}"

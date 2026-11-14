@@ -71,10 +71,12 @@ jobs:
       - name: 打包 Python 工具（和 EXE 一起分发）
         shell: pwsh
         run: |
+          # 源文件按目录归档，分发时平铺到 exe 同级
           $files = @(
-            'node-proxy.py', 'snapshot.py', 'backup.py', 'sync-data.py',
-            'set-pref.py', 'account-sync.py', 'autosync.py',
-            '指纹自检.html', 'probe_full.html', 'manager.example.json', '项目说明.md', 'README.md'
+            'scripts/node-proxy.py', 'scripts/snapshot.py', 'scripts/backup.py', 'scripts/sync-data.py',
+            'scripts/set-pref.py', 'scripts/account-sync.py', 'scripts/autosync.py',
+            'tools/指纹自检.html', 'tests/probe_full.html',
+            'examples/manager.example.json', 'docs/项目说明.md', 'README.md'
           )
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item 'out/KZManager.exe' dist/

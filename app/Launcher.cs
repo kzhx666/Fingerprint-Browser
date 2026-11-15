@@ -200,6 +200,9 @@ public static class Launcher
             r.Pid = proc?.Id ?? 0;
             r.Ok = true;
 
+            // 刚启动的实例就是"最后用过"的，外部链接应当落到它
+            try { SmartDefault.NoteInstance(name); } catch { }
+
             // 窗口是异步创建的（通常 1~3 秒），轮询等它出现，写入独立 AUMID。
             // 必须同步等：--launch 模式下调用方紧接着就 Shutdown()，
             // 如果丢到 Task.Run 里，进程会在打 AUMID 之前就退出。

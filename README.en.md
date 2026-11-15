@@ -90,7 +90,7 @@ Cloning an instance and changing its seed yields "the same model, a different un
 
 - **Right vertical sidebar** — bookmarks, reading list, history, downloads, plus **custom site icons**
 - **Custom sites** — press `+` to grab the current page's title and favicon; right-click to open / edit / remove
-- **Default browser routing** — external links go to whichever instance is in the foreground
+- **Default browser routing** — external links open as a new tab in the instance you were last using, never a fresh browser window
 - **Dark / light theme** — instant switch
 
 ---
@@ -264,6 +264,41 @@ See the Chinese README for a fully annotated tree.
 | `proxy` | proxy endpoint |
 | `tags` | color tags |
 | `accounts` | bound platform accounts |
+
+---
+
+## Default browser routing
+
+Windows allows a single default browser, but every instance here shares one
+`chrome.exe`, and the OS never passes `--user-data-dir` when handing over a link.
+
+So the manager registers itself as the http/https handler. A link becomes
+`KZManager.exe --route-url "<url>"`, which picks the target instance and starts
+chrome with an **explicit `--user-data-dir`**. If that instance is already
+running, chrome forwards the URL and opens a new tab in the existing window —
+no new browser window is created.
+
+Selection order:
+
+| # | Condition | Result |
+|---|---|---|
+| 1 | The foreground window is an instance's browser | that instance |
+| 2 | The foreground is not a browser (WeChat, QQ, mail client) | the **last used instance** |
+| 3 | Nothing recorded | `defaultInstance` from config |
+| 4 | Still nothing | first instance |
+
+Step 2 is the important one: when you click a link, the foreground window is
+almost never the browser. The manager therefore records the last used instance
+in the background and persists it to `_state/last-instance.txt`, which the
+routing process reads back — a fresh process cannot keep state in memory.
+
+Diagnostics:
+
+```bash
+KZManager.exe --route-debug     # show the decision: foreground, recorded, target
+KZManager.exe --set-default     # register as default browser
+KZManager.exe --unset-default   # unregister
+```
 
 ---
 

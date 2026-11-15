@@ -706,11 +706,11 @@ public partial class MainWindow : Window
         {
             var inst = SmartDefault.ApplyNow();
             SetStatus("智能默认浏览器已开启" +
-                      (inst.Length > 0 ? $"：跟随前台实例 → {inst}" : ""));
+                      (inst.Length > 0 ? $"：外部链接落到 → {inst}" : "：等待第一次记录"));
         }
         else
         {
-            SetStatus("智能默认浏览器已关闭（保持最后一次的 data_dir）");
+            SetStatus("智能默认浏览器已关闭（外部链接仍可路由，但不再自动记录实例）");
         }
     }
 
@@ -718,14 +718,16 @@ public partial class MainWindow : Window
     {
         var inst = SmartDefault.ApplyNow();
         var state = SmartDefault.Enabled ? "开启" : "关闭";
-        var target = inst.Length > 0 ? inst : "（还没有前台实例，保持上次）";
+        var target = inst.Length > 0 ? inst : "（还没有记录，将回退到第一个实例）";
         var msg = "智能默认浏览器：" + state + "\n\n" +
                   "当前点外部链接会落到：\n  " + target + "\n\n" +
-                  "原理：后台每 0.7 秒读一次前台窗口，把 chrome++.ini 的 data_dir " +
-                  "同步成该实例的 Data 目录。Chrome++ 每次启动重读 ini，无参数启动" +
-                  "（外部链接）就落到这个实例。\n\n" +
-                  "前台不是浏览器时保持上一次选择，所以从微信/QQ 点链接会落到你" +
-                  "最后用的那个实例。";
+                  "规则：\n" +
+                  "1. 前台就是浏览器 → 用它；\n" +
+                  "2. 前台不是浏览器（微信/QQ/邮件里点链接）→ 用最后用过的实例；\n" +
+                  "3. 都没有 → 配置的默认实例 → 第一个实例。\n\n" +
+                  "目标实例已在运行时，链接会转发过去在原窗口开新标签，不会新开窗口。\n\n" +
+                  "实现上不修改任何共享配置，每次启动都带明确的 profile 路径。\n\n" +
+                  "—— 当前决策 ——\n" + SmartDefault.Diagnose();
         MessageBox.Show(msg, "智能默认浏览器",
                         MessageBoxButton.OK, MessageBoxImage.Information);
     }

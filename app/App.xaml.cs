@@ -183,6 +183,17 @@ public partial class App : Application
             return;
         }
 
+        // ---- 命令行模式：--route-debug ----
+        // 打印本次路由的决策过程（前台是谁、记录的是谁、最终落到哪个实例）。
+        if (Array.IndexOf(argv, "--route-debug") >= 0)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            MessageBox.Show(SmartDefault.Diagnose(), "外部链接路由诊断",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown(0);
+            return;
+        }
+
         // ---- 命令行模式：--route-url "<url>" ----
         // 作为「默认浏览器」被系统调起时走这里：先判断前台是哪个实例，
         // 再用显式 --user-data-dir 把链接转发过去。绝不修改任何共享配置。

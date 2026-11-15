@@ -168,6 +168,97 @@ public static class SmartDefault
         return "";
     }
 
+
+    // ------------------------------------------------------------ 运行中的实例
+
+    static readonly object _runLock = new();
+    static DateTime _runCacheAt = DateTime.MinValue;
+    static List<string> _runCache = new();
+
+    /// <summary>当前真正在运行的托管实例名（带 1 秒缓存）。</summary>
+    public static List<string> RunningInstanceNames()
+    {
+        lock (_runLock)
+        {
+            if ((DateTime.UtcNow - _runCacheAt).TotalSeconds < 1.0)
+                return new List<string>(_runCache);
+        }
+
+        var names = new List<string>();
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -NonInteractive -Command \"" +
+                    "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);" +
+                    "(Get-CimInstance Win32_Process).Where({$_.Name -eq 'chrome.exe'}).CommandLine\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                CreateNoWindow = true
+            };
+            using var ps = Process.Start(psi);
+            if (ps is not null)
+            {
+                var all = ps.StandardOutput.ReadToEnd();
+                ps.WaitForExit(4000);
+                foreach (var line in all.Split('\n'))
+                {
+                    var m = DataDirRe.Match(line);
+                    if (!m.Success) continue;
+                    var dd = (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
+                             .TrimEnd('\\');
+                    var inst = InstanceOf(dd);
+                    if (inst.Length > 0 && !names.Contains(inst)) names.Add(inst);
+                }
+            }
+        }
+        catch (Exception ex) { Log("枚举运行实例失败: " + ex.Message); }
+
+        lock (_runLock)
+        {
+            _runCache = new List<string>(names);
+            _runCacheAt = DateTime.UtcNow;
+        }
+        return names;
+    }
+
+
+    /// <summary>
+    /// 多个实例同时在跑、又没有新鲜记录时，用"最近活跃"来挑：
+    /// 正在使用的实例会持续写 History / Cookies，取最新的那个。
+    /// </summary>
+    static string MostRecentlyUsed(IEnumerable<string> running)
+    {
+        string best = "";
+        DateTime bestTime = DateTime.MinValue;
+        foreach (var name in running)
+        {
+            DateTime t = DateTime.MinValue;
+            try
+            {
+                var def = Path.Combine(Paths.DataDir(name), "Default");
+                foreach (var rel in new[] { "History", "Network\\Cookies", "Preferences" })
+                {
+                    var f = Path.Combine(def, rel);
+                    if (File.Exists(f))
+                    {
+                        var m = File.GetLastWriteTimeUtc(f);
+                        if (m > t) t = m;
+                    }
+                }
+            }
+            catch { }
+            if (t > bestTime)
+            {
+                bestTime = t;
+                best = name;
+            }
+        }
+        return best;
+    }
+
     // ------------------------------------------------------------ 后台记录
 
     /// <summary>
@@ -243,6 +334,7 @@ public static class SmartDefault
     /// </summary>
     public static string PickTargetInstance(out string reason)
     {
+        // 1) 前台就是某个实例的浏览器
         var dd = ForegroundDataDir();
         if (dd.Length > 0)
         {
@@ -255,46 +347,72 @@ public static class SmartDefault
                 reason = "前台实例";
                 return inst;
             }
-            reason = "前台是浏览器但不属于任何实例";
-        }
-        else
-        {
-            reason = "前台不是浏览器";
         }
 
+        var running = RunningInstanceNames();
+
+        // 2) 记录的实例，且它确实在运行
         var recorded = _lastInstance.Length > 0 ? _lastInstance : ReadState();
+        if (recorded.Length > 0 && running.Contains(recorded))
+        {
+            reason = "最后使用的实例（运行中）";
+            return recorded;
+        }
+
+        // 3) 只有一个实例在运行 —— 那就是用户正在用的
+        if (running.Count == 1)
+        {
+            reason = "当前唯一运行的实例";
+            return running[0];
+        }
+
+        // 4) 多个在运行但没有记录 —— 取最近活跃的那个
+        if (running.Count > 1)
+        {
+            var recent = MostRecentlyUsed(running);
+            if (recent.Length > 0)
+            {
+                reason = "多个实例在运行，取最近活跃的";
+                return recent;
+            }
+        }
+
+        // 5) 记录里的实例没在运行 —— 仍然按它启动
         try
         {
             if (recorded.Length > 0 && Store.ListInstances().Contains(recorded))
             {
-                reason += "，使用最后使用的实例";
+                reason = "最后使用的实例（未运行，将启动）";
                 return recorded;
             }
         }
         catch { }
 
+        // 6) 配置的默认实例
         try
         {
             var cfg = Store.LoadConfig();
             if (!string.IsNullOrWhiteSpace(cfg.defaultInstance) &&
                 Store.ListInstances().Contains(cfg.defaultInstance))
             {
-                reason += "，使用配置的默认实例";
+                reason = "配置的默认实例";
                 return cfg.defaultInstance;
             }
         }
         catch { }
 
+        // 7) 兜底
         try
         {
             var all = Store.ListInstances();
             if (all.Count > 0)
             {
-                reason += "，回退到第一个实例";
+                reason = "回退到第一个实例";
                 return all[0];
             }
         }
         catch { }
+
         reason = "没有可用实例";
         return "";
     }

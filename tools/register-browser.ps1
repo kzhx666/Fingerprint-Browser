@@ -32,7 +32,8 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$ChromePath,
 
-    [string]$Name = 'KZ Browser',
+    [string]$ManagerPath = '',   # KZManager.exe 路径；指定后 URL 交给它路由
+[string]$Name = 'KZ Browser',
 
     # 指定数据目录。填了之后点链接会用这个 profile 打开，
     # 适合把默认浏览器做成「主控浏览器」，跟多开实例共享书签/扩展。
@@ -163,6 +164,14 @@ if ($UserDataDir) {
     $plainCmd = "`"$ChromePath`""
 }
 
+# URL 交给管理器路由：由它决定落到哪个实例，再用显式 --user-data-dir 启动。
+# 不指定 -ManagerPath 时退化为直接启动 chrome（单实例场景）。
+if ($ManagerPath -and (Test-Path $ManagerPath)) {
+    $urlCmd = "`"$ManagerPath`" --route-url `"%1`""
+} else {
+    $urlCmd = $openCmd
+}
+
 # ---- 1. ProgID：HTML 文档
 Write-Step "写 ProgID ($htmlProgId)"
 $k = "HKCU:\Software\Classes\$htmlProgId"
@@ -183,7 +192,7 @@ Set-ItemProperty -Path $k -Name 'URL Protocol' -Value ''
 New-Item -Path "$k\DefaultIcon" -Force | Out-Null
 Set-ItemProperty -Path "$k\DefaultIcon" -Name '(default)' -Value $IconSpec
 New-Item -Path "$k\shell\open\command" -Force | Out-Null
-Set-ItemProperty -Path "$k\shell\open\command" -Name '(default)' -Value $openCmd
+Set-ItemProperty -Path "$k\shell\open\command" -Name '(default)' -Value $urlCmd
 Write-Ok "OK"
 
 # ---- 4. RegisteredApplications（注册为「应用」）

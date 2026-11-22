@@ -4671,7 +4671,10 @@ def patch_vertical_sidebar(src_root: Path, rep: Report):
 
         # ---------- layout ----------
         if "kz_rail" not in lay:
-            anchor = "  gfx::Insets shadow_overlay_insets;"
+            # 必须插在内容区计算（unclipped_contents_region）之前，
+            # 否则内容会按原宽度铺满、把侧边栏盖住。
+            anchor = ("  // This will be the area next to the vertical tab strip"
+                      " (if present) that will")
             if anchor in lay:
                 lay = lay.replace(anchor,
                                   asset("layout.rail.txt") + anchor, 1)

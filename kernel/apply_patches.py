@@ -4759,9 +4759,51 @@ def patch_portable_key(src_root: Path, rep: Report):
 
 
 
+
+def patch_sidebar_extras(src_root: Path, rep: Report):
+    """侧边栏配套改动。
+
+    1. 打开「按日期」的经典历史侧边栏（kByDateHistoryInSidePanel）。
+       原版默认关闭，此时注册的是 HistoryClusters（按搜索主题聚合的旅程视图），
+       侧边栏历史按钮只能看到聚合结果，不是按时间排列的浏览记录。
+    2. 历史按钮改为指向 kHistory，配合上面的开关即可显示经典列表。
+    """
+    name = "sidebar history panel"
+    feat = src_root / "chrome/browser/ui/ui_features.cc"
+    cc = src_root / "chrome/browser/ui/views/frame/browser_view.cc"
+    if not (feat.exists() and cc.exists()):
+        rep.record(name, "SKIPPED", "sources not in tree")
+        return
+
+    try:
+        f = feat.read_text(encoding="utf-8", errors="replace")
+        c = cc.read_text(encoding="utf-8", errors="replace")
+        if "kz-sidebar - 侧边栏历史" in f and "SidePanelEntryId::kHistory," in c:
+            rep.record(name, "ALREADY")
+            return
+
+        old_f = "BASE_FEATURE(kByDateHistoryInSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);"
+        new_f = ("// PATCH:kz-sidebar - 侧边栏历史改用「按日期」的经典列表\n"
+                 "BASE_FEATURE(kByDateHistoryInSidePanel, base::FEATURE_ENABLED_BY_DEFAULT);")
+        if old_f in f:
+            f = f.replace(old_f, new_f, 1)
+            feat.write_text(f, encoding="utf-8", newline="\n")
+
+        if "SidePanelEntryId::kHistoryClusters," in c:
+            c = c.replace("SidePanelEntryId::kHistoryClusters,",
+                          "SidePanelEntryId::kHistory,", 1)
+            cc.write_text(c, encoding="utf-8", newline="\n")
+
+        rep.record(name, "APPLIED")
+    except Exception as e:  # noqa: BLE001
+        rep.record(name, "FAILED", str(e))
+
+
+
 ALL_PATCHES = [
     patch_portable_key,
     patch_vertical_sidebar,
+    patch_sidebar_extras,
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
     patch_bookmark_new_tab,

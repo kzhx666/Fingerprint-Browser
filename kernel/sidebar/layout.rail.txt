@@ -8,7 +8,11 @@
     views::View* const kz_rail = kz_browser_view->kz_sidebar();
     if (kz_rail && kz_rail->GetVisible()) {
       constexpr int kKzRailWidth = 40;
-      if (params.visual_client_area.width() > kKzRailWidth * 2) {
+      // 全屏（F11 / 网页视频全屏）时不占位，并把边界清空，
+      // 否则侧边栏会压在视频画面上且留出一条空白。
+      // 全屏时不预留这一条，让画面铺满；判定信号与工具栏一致。
+      if (!is_fullscreen(layout_data_->window_state) &&
+          params.visual_client_area.width() > kKzRailWidth * 2) {
         const gfx::Rect kz_rail_bounds(
             params.visual_client_area.right() - kKzRailWidth,
             params.visual_client_area.y(), kKzRailWidth,

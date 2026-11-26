@@ -4765,53 +4765,111 @@ def patch_portable_key(src_root: Path, rep: Report):
 
 
 def patch_sidebar_fullscreen(src_root: Path, rep: Report):
-    """全屏时隐藏侧边栏。
+    """全屏时隐藏侧边栏（异步，避免 0xC0000008 崩溃）。
 
     只切换可见性，不碰布局：布局里已有 GetVisible() 判断，侧边栏不可见时
     就不会预留那 40px，画面自然铺满。
 
-    不要改成在布局里判断全屏 —— 布局的 DoPreLayoutComputations() 会先用
-    revised_params 做预计算，事后再改会造成预计算与实际摆放不一致，
-    布局反复重算直到卡死（曾经踩过这个坑）。
+    两个必须遵守的约束：
+    1. 不要在布局里判断全屏并修改 revised_params。布局的
+       DoPreLayoutComputations() 会先做预计算，事后再改会造成预计算与实际
+       摆放不一致，布局反复重算直到卡死（曾把 CPU 打到 249 秒）。
+    2. 不要在 OnWidgetBoundsChanged 里同步调用 SetVisible。该回调发生在原生
+       窗口尺寸变化过程中，同步操作视图会触发绘制/布局重入，窗口正在销毁或
+       重建时访问失效 HWND 会抛 0xC0000008 (STATUS_INVALID_HANDLE)。
+       必须投递为异步任务，并用 WeakPtr + 销毁检查保护。
     """
     name = "sidebar hides in fullscreen"
-    cc = src_root / "chrome/browser/ui/views/frame/browser_view.cc"
-    if not cc.exists():
-        rep.record(name, "SKIPPED", "browser_view.cc not in tree")
+    base = "chrome/browser/ui/views/frame"
+    cc = src_root / base / "browser_view.cc"
+    hh = src_root / base / "browser_view.h"
+    if not (cc.exists() and hh.exists()):
+        rep.record(name, "SKIPPED", "browser_view sources not in tree")
         return
 
     try:
         c = cc.read_text(encoding="utf-8", errors="replace")
-        if "PATCH:kz-sidebar - 全屏时隐藏侧边栏" in c:
+        h = hh.read_text(encoding="utf-8", errors="replace")
+        if ("KzApplyRailVisibility" in c
+                and "KzApplyRailVisibility" in h):
             rep.record(name, "ALREADY")
             return
 
-        anchor = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
+        # ---- header ----
+        # 只锚定 kz_sidebar_ 声明这一行，不依赖它后面紧跟什么内容
+        # （侧边栏补丁注入的成员顺序可能变化）。
+        anchor_h = "  raw_ptr<views::View> kz_sidebar_ = nullptr;\n"
+        add_h = ("  // 全屏隐藏：异步投递，避免在窗口尺寸变化回调里同步操作视图\n"
+                 "  void KzRequestRailVisibilityUpdate();\n"
+                 "  void KzApplyRailVisibility();\n"
+                 "  bool kz_rail_update_pending_ = false;\n")
+        if "KzApplyRailVisibility" not in h:
+            if anchor_h not in h:
+                # 侧边栏补丁未应用（如测试夹具），本补丁无从下手
+                rep.record(name, "SKIPPED", "sidebar not present")
+                return
+            h = h.replace(anchor_h, anchor_h + add_h, 1)
+            hh.write_text(h, encoding="utf-8", newline="\n")
+
+        # ---- cc ----
+        old_c = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
                                         const gfx::Rect& new_bounds) {
   TryNotifyWindowBoundsChanged(new_bounds);
 }"""
-        new = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
+        new_c = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
                                         const gfx::Rect& new_bounds) {
   TryNotifyWindowBoundsChanged(new_bounds);
 
-  // PATCH:kz-sidebar - 全屏时隐藏侧边栏。
-  //
-  // 只切换可见性，不碰布局：布局里已经有 GetVisible() 判断，
-  // 侧边栏不可见时就不会预留那 40px，画面自然铺满。
-  // 这样避免了在布局里做全屏判断导致预计算与实际摆放不一致
-  // （那会让布局反复重算直到卡死）。
-  if (kz_sidebar_ && browser_widget_) {
-    const bool kz_want_visible = !browser_widget_->IsFullscreen();
-    if (kz_sidebar_->GetVisible() != kz_want_visible) {
-      kz_sidebar_->SetVisible(kz_want_visible);
-    }
+  // PATCH:kz-sidebar - 全屏时隐藏侧边栏（异步，见 KzApplyRailVisibility）。
+  KzRequestRailVisibilityUpdate();
+}
+
+// PATCH:kz-sidebar - 全屏时隐藏侧边栏。
+//
+// 只切换可见性，不碰布局：布局里已有 GetVisible() 判断，侧边栏不可见时
+// 就不会预留那 40px，画面自然铺满。
+//
+// 关键：必须异步执行。OnWidgetBoundsChanged 发生在原生窗口尺寸变化过程中，
+// 在这里同步调用 SetVisible 会触发绘制/布局重入，此时窗口可能正在销毁或
+// 重建，访问失效 HWND 会抛 0xC0000008 (STATUS_INVALID_HANDLE)。
+void BrowserView::KzRequestRailVisibilityUpdate() {
+  if (kz_rail_update_pending_) {
+    return;
+  }
+  kz_rail_update_pending_ = true;
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&BrowserView::KzApplyRailVisibility, GetAsWeakPtr()));
+}
+
+void BrowserView::KzApplyRailVisibility() {
+  kz_rail_update_pending_ = false;
+
+  // BrowserView 正在销毁，或侧边栏已经不在，直接返回。
+  if (!kz_sidebar_) {
+    return;
+  }
+  views::Widget* const widget = GetWidget();
+  if (!widget || widget->IsClosed()) {
+    return;
+  }
+  // 侧边栏必须仍挂在本窗口上（销毁过程中父子关系会先断开）。
+  if (kz_sidebar_->GetWidget() != widget) {
+    return;
+  }
+
+  const bool want_visible = !widget->IsFullscreen();
+  if (kz_sidebar_->GetVisible() != want_visible) {
+    kz_sidebar_->SetVisible(want_visible);
   }
 }"""
-        if anchor not in c:
-            rep.record(name, "FAILED", "OnWidgetBoundsChanged anchor missing")
-            return
-        c = c.replace(anchor, new, 1)
-        cc.write_text(c, encoding="utf-8", newline="\n")
+        if "KzApplyRailVisibility" not in c:
+            if old_c not in c:
+                rep.record(name, "SKIPPED", "OnWidgetBoundsChanged anchor absent")
+                return
+            c = c.replace(old_c, new_c, 1)
+            cc.write_text(c, encoding="utf-8", newline="\n")
+
         rep.record(name, "APPLIED")
     except Exception as e:  # noqa: BLE001
         rep.record(name, "FAILED", str(e))

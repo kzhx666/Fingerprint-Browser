@@ -1,29 +1,24 @@
   // PATCH:kz-sidebar - reserve a real strip for the vertical rail.
-  // 侧边栏参与布局（不是叠加），这样网页内容永远不会盖住它，鼠标事件也一定
-  // 能到达它的按钮。必须放在 unclipped_contents_region 计算之前，
-  // 否则内容区会按原宽度算好，把侧边栏压在下面。
+  // 侧边栏参与布局（不是叠加），这样网页内容不会盖住它，鼠标事件也一定能
+  // 到达它的按钮。
+  //
+  // 注意：只改 params，不要改 layout_data_->revised_params。
+  // DoPreLayoutComputations() 已经用 revised_params 预计算过
+  // horizontal_layout，事后再改会造成预计算与实际摆放不一致，
+  // 布局会反复重算直到卡死。
   if (views().browser_view) {
     BrowserView* const kz_browser_view =
         static_cast<BrowserView*>(views().browser_view);
     views::View* const kz_rail = kz_browser_view->kz_sidebar();
     if (kz_rail && kz_rail->GetVisible()) {
       constexpr int kKzRailWidth = 40;
-      if (is_fullscreen(layout_data_->window_state)) {
-        // 全屏（F11 / 网页视频全屏）时把边界清零，让画面铺满，
-        // 否则会残留一层半透明图标压在视频上。
-        layout.AddChild(kz_rail, gfx::Rect());
-      } else if (params.visual_client_area.width() > kKzRailWidth * 2) {
+      if (params.visual_client_area.width() > kKzRailWidth * 2) {
         const gfx::Rect kz_rail_bounds(
             params.visual_client_area.right() - kKzRailWidth,
             params.visual_client_area.y(), kKzRailWidth,
             params.visual_client_area.height());
         layout.AddChild(kz_rail, kz_rail_bounds);
         params.InsetHorizontal(kKzRailWidth, /*leading=*/false);
-        // params 是本函数内的拷贝（BrowserLayoutParams params =
-        // layout_data_->revised_params）。内容区按 revised_params 摆放，
-        // 只改局部拷贝的话内容仍会铺满整个宽度。
-        layout_data_->revised_params.InsetHorizontal(kKzRailWidth,
-                                                     /*leading=*/false);
       }
     }
   }

@@ -4763,9 +4763,65 @@ def patch_portable_key(src_root: Path, rep: Report):
 
 
 
+
+def patch_sidebar_fullscreen(src_root: Path, rep: Report):
+    """全屏时隐藏侧边栏。
+
+    只切换可见性，不碰布局：布局里已有 GetVisible() 判断，侧边栏不可见时
+    就不会预留那 40px，画面自然铺满。
+
+    不要改成在布局里判断全屏 —— 布局的 DoPreLayoutComputations() 会先用
+    revised_params 做预计算，事后再改会造成预计算与实际摆放不一致，
+    布局反复重算直到卡死（曾经踩过这个坑）。
+    """
+    name = "sidebar hides in fullscreen"
+    cc = src_root / "chrome/browser/ui/views/frame/browser_view.cc"
+    if not cc.exists():
+        rep.record(name, "SKIPPED", "browser_view.cc not in tree")
+        return
+
+    try:
+        c = cc.read_text(encoding="utf-8", errors="replace")
+        if "PATCH:kz-sidebar - 全屏时隐藏侧边栏" in c:
+            rep.record(name, "ALREADY")
+            return
+
+        anchor = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
+                                        const gfx::Rect& new_bounds) {
+  TryNotifyWindowBoundsChanged(new_bounds);
+}"""
+        new = """void BrowserView::OnWidgetBoundsChanged(views::Widget* widget,
+                                        const gfx::Rect& new_bounds) {
+  TryNotifyWindowBoundsChanged(new_bounds);
+
+  // PATCH:kz-sidebar - 全屏时隐藏侧边栏。
+  //
+  // 只切换可见性，不碰布局：布局里已经有 GetVisible() 判断，
+  // 侧边栏不可见时就不会预留那 40px，画面自然铺满。
+  // 这样避免了在布局里做全屏判断导致预计算与实际摆放不一致
+  // （那会让布局反复重算直到卡死）。
+  if (kz_sidebar_ && browser_widget_) {
+    const bool kz_want_visible = !browser_widget_->IsFullscreen();
+    if (kz_sidebar_->GetVisible() != kz_want_visible) {
+      kz_sidebar_->SetVisible(kz_want_visible);
+    }
+  }
+}"""
+        if anchor not in c:
+            rep.record(name, "FAILED", "OnWidgetBoundsChanged anchor missing")
+            return
+        c = c.replace(anchor, new, 1)
+        cc.write_text(c, encoding="utf-8", newline="\n")
+        rep.record(name, "APPLIED")
+    except Exception as e:  # noqa: BLE001
+        rep.record(name, "FAILED", str(e))
+
+
+
 ALL_PATCHES = [
     patch_portable_key,
     patch_vertical_sidebar,
+    patch_sidebar_fullscreen,
     patch_fingerprint_helper,
     patch_multirow_bookmarks,
     patch_bookmark_new_tab,
